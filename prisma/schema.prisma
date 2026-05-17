@@ -1,0 +1,727 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum LeadStatus {
+  NEW
+  VALIDATED
+  SUPPRESSED
+  QUEUED
+  CONTACTED
+  REPLIED
+  INTERESTED
+  HOT
+  NOT_INTERESTED
+  UNSUBSCRIBED
+  BOUNCED
+  DO_NOT_CONTACT
+  WON
+  LOST
+}
+
+enum ImportRowStatus {
+  IMPORTED
+  FLAGGED
+  DUPLICATE
+  INVALID
+  SUPPRESSED
+  ROLLED_BACK
+}
+
+enum SuppressionReason {
+  UNSUBSCRIBED
+  COMPLAINT
+  HARD_BOUNCE
+  MANUAL_BLOCK
+  RISKY_DOMAIN
+  COMPETITOR
+}
+
+enum LeadEventType {
+  IMPORTED
+  STATUS_CHANGED
+  TAGGED
+  SUPPRESSED
+  NOTE_UPDATED
+}
+
+enum CampaignObjective {
+  AWARENESS
+  AUDIT_OFFER
+  MEETING_REQUEST
+  REACTIVATION
+  FOLLOW_UP
+  PROPOSAL
+}
+
+enum CampaignStatus {
+  DRAFT
+  REVIEW_BLOCKED
+  REVIEW_READY
+  APPROVED
+  SCHEDULED
+  SENDING
+  PAUSED
+  COMPLETED
+  ARCHIVED
+}
+
+enum CampaignRecipientStatus {
+  DRAFT
+  READY
+  QUEUED
+  SENT
+  SKIPPED
+  FAILED
+  EXCLUDED
+}
+
+enum CampaignReviewSeverity {
+  PASS
+  WARNING
+  BLOCK
+}
+
+enum SendingAccountStatus {
+  ACTIVE
+  PAUSED
+  AUTH_FAILED
+  NOT_CONFIGURED
+}
+
+enum SendJobStatus {
+  QUEUED
+  RUNNING
+  PAUSED
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum EmailMessageStatus {
+  QUEUED
+  SENDING
+  SENT
+  SKIPPED
+  FAILED
+}
+
+enum EmailEventType {
+  QUEUED
+  SENT
+  FAILED
+  SKIPPED
+  RATE_LIMITED
+  UNSUBSCRIBED
+  OPENED
+  CLICKED
+  TEST_SENT
+  REPLY_RECEIVED
+  AI_REPLY_DRAFTED
+  REPLY_SENT
+}
+
+enum ReplyIntent {
+  HOT_LEAD
+  MEETING_REQUEST
+  PRICING_REQUEST
+  PORTFOLIO_REQUEST
+  OBJECTION
+  GENERAL_INTEREST
+  NOT_INTERESTED
+  UNSUBSCRIBE
+  OUT_OF_OFFICE
+  WRONG_PERSON
+  COMPLAINT
+  UNCLEAR
+}
+
+enum ReplySentiment {
+  POSITIVE
+  NEUTRAL
+  NEGATIVE
+}
+
+enum ReplyStatus {
+  NEW
+  AI_CLASSIFIED
+  DRAFT_READY
+  OWNER_REVIEW
+  HOT_HANDOFF
+  AUTO_REPLIED
+  CLOSED
+  SUPPRESSED
+}
+
+enum AiReplyDraftStatus {
+  DRAFT
+  APPROVED
+  SENT
+  DISCARDED
+  BLOCKED
+}
+
+enum DealStage {
+  NEW
+  CONTACTED
+  REPLIED
+  ENGAGED
+  HOT
+  OWNER_HANDLING
+  PROPOSAL_SENT
+  FOLLOW_UP_LATER
+  WON
+  LOST
+}
+
+enum DealStatus {
+  OPEN
+  WON
+  LOST
+  PAUSED
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("users")
+}
+
+model Setting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     Json
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("settings")
+}
+
+model Offer {
+  id               String         @id @default(cuid())
+  name             String         @unique
+  targetAudience   String         @map("target_audience")
+  painPoints       String[]       @default([]) @map("pain_points")
+  valueProposition String         @map("value_proposition")
+  proofPoints      String[]       @default([]) @map("proof_points")
+  servicesIncluded String[]       @default([]) @map("services_included")
+  ctaStyle         String         @map("cta_style")
+  disallowedClaims String[]       @default([]) @map("disallowed_claims")
+  aiVoiceRules     String         @map("ai_voice_rules")
+  active           Boolean        @default(true)
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+  campaigns        Campaign[]
+  aiReplyDrafts    AiReplyDraft[]
+  deals            Deal[]
+
+  @@index([active])
+  @@map("offers")
+}
+
+model Lead {
+  id                 String              @id @default(cuid())
+  email              String              @unique
+  firstName          String?             @map("first_name")
+  lastName           String?             @map("last_name")
+  company            String?
+  website            String?
+  role               String?
+  industry           String?
+  country            String?
+  timezone           String?
+  source             String?
+  sourceUrl          String?             @map("source_url")
+  legalBasis         String?             @map("legal_basis")
+  consentNotes       String?             @map("consent_notes")
+  ownerNotes         String?             @map("owner_notes")
+  status             LeadStatus          @default(NEW)
+  scoreFit           Int                 @default(0) @map("score_fit")
+  scoreEngagement    Int                 @default(0) @map("score_engagement")
+  scoreIntent        Int                 @default(0) @map("score_intent")
+  lastContactedAt    DateTime?           @map("last_contacted_at")
+  nextActionAt       DateTime?           @map("next_action_at")
+  createdAt          DateTime            @default(now()) @map("created_at")
+  updatedAt          DateTime            @updatedAt @map("updated_at")
+  tags               LeadTag[]
+  importRows         ImportRow[]
+  events             LeadEvent[]
+  campaignRecipients CampaignRecipient[]
+  emailMessages      EmailMessage[]
+  emailEvents        EmailEvent[]
+  unsubscribeTokens  UnsubscribeToken[]
+  inboundReplies     InboundReply[]
+  aiReplyDrafts      AiReplyDraft[]
+  deals              Deal[]
+
+  @@index([status])
+  @@index([company])
+  @@index([source])
+  @@index([country])
+  @@map("leads")
+}
+
+model LeadTag {
+  id        String   @id @default(cuid())
+  leadId    String   @map("lead_id")
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+  lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@unique([leadId, name])
+  @@index([name])
+  @@map("lead_tags")
+}
+
+model ImportBatch {
+  id             String      @id @default(cuid())
+  filename       String
+  totalRows      Int         @default(0) @map("total_rows")
+  importedRows   Int         @default(0) @map("imported_rows")
+  invalidRows    Int         @default(0) @map("invalid_rows")
+  duplicateRows  Int         @default(0) @map("duplicate_rows")
+  suppressedRows Int         @default(0) @map("suppressed_rows")
+  flaggedRows    Int         @default(0) @map("flagged_rows")
+  rolledBackRows Int         @default(0) @map("rolled_back_rows")
+  rolledBackAt   DateTime?   @map("rolled_back_at")
+  createdAt      DateTime    @default(now()) @map("created_at")
+  rows           ImportRow[]
+
+  @@map("import_batches")
+}
+
+model ImportRow {
+  id        String          @id @default(cuid())
+  batchId   String          @map("batch_id")
+  rowNumber Int             @map("row_number")
+  raw       Json
+  email     String?
+  status    ImportRowStatus
+  issues    String[]        @default([])
+  leadId    String?         @map("lead_id")
+  createdAt DateTime        @default(now()) @map("created_at")
+  batch     ImportBatch     @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  lead      Lead?           @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  @@index([batchId])
+  @@index([status])
+  @@map("import_rows")
+}
+
+model SuppressionEntry {
+  id        String            @id @default(cuid())
+  email     String            @unique
+  reason    SuppressionReason
+  notes     String?
+  source    String?
+  createdAt DateTime          @default(now()) @map("created_at")
+  updatedAt DateTime          @updatedAt @map("updated_at")
+
+  @@index([reason])
+  @@map("suppression_entries")
+}
+
+model LeadEvent {
+  id        String        @id @default(cuid())
+  leadId    String        @map("lead_id")
+  type      LeadEventType
+  message   String
+  metadata  Json?
+  createdAt DateTime      @default(now()) @map("created_at")
+  lead      Lead          @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
+  @@index([type])
+  @@map("lead_events")
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  action     String
+  entityType String   @map("entity_type")
+  entityId   String?  @map("entity_id")
+  metadata   Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([action])
+  @@index([entityType])
+  @@map("audit_logs")
+}
+
+model Campaign {
+  id                    String              @id @default(cuid())
+  name                  String
+  objective             CampaignObjective
+  status                CampaignStatus      @default(DRAFT)
+  offerId               String              @map("offer_id")
+  audienceFilter        Json                @map("audience_filter")
+  estimatedRecipients   Int                 @default(0) @map("estimated_recipients")
+  personalizationFields String[]            @default([]) @map("personalization_fields")
+  riskFlags             String[]            @default([]) @map("risk_flags")
+  claimsUsed            String[]            @default([]) @map("claims_used")
+  aiConfidence          Int                 @default(0) @map("ai_confidence")
+  aiExplanation         String?             @map("ai_explanation")
+  approvedAt            DateTime?           @map("approved_at")
+  createdAt             DateTime            @default(now()) @map("created_at")
+  updatedAt             DateTime            @updatedAt @map("updated_at")
+  offer                 Offer               @relation(fields: [offerId], references: [id], onDelete: Restrict)
+  steps                 CampaignStep[]
+  variants              CampaignVariant[]
+  recipients            CampaignRecipient[]
+  aiGenerations         AiGeneration[]
+  reviews               CampaignReview[]
+  sendJobs              SendJob[]
+  emailMessages         EmailMessage[]
+  emailEvents           EmailEvent[]
+  unsubscribeTokens     UnsubscribeToken[]
+  inboundReplies        InboundReply[]
+  aiReplyDrafts         AiReplyDraft[]
+  deals                 Deal[]
+
+  @@index([status])
+  @@index([objective])
+  @@index([offerId])
+  @@map("campaigns")
+}
+
+model CampaignStep {
+  id         String         @id @default(cuid())
+  campaignId String         @map("campaign_id")
+  stepOrder  Int            @map("step_order")
+  delayDays  Int            @default(0) @map("delay_days")
+  subject    String
+  body       String
+  createdAt  DateTime       @default(now()) @map("created_at")
+  updatedAt  DateTime       @updatedAt @map("updated_at")
+  campaign   Campaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  messages   EmailMessage[]
+
+  @@unique([campaignId, stepOrder])
+  @@map("campaign_steps")
+}
+
+model CampaignVariant {
+  id         String   @id @default(cuid())
+  campaignId String   @map("campaign_id")
+  name       String
+  subject    String
+  body       String
+  createdAt  DateTime @default(now()) @map("created_at")
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId])
+  @@map("campaign_variants")
+}
+
+model CampaignRecipient {
+  id         String                  @id @default(cuid())
+  campaignId String                  @map("campaign_id")
+  leadId     String                  @map("lead_id")
+  status     CampaignRecipientStatus @default(DRAFT)
+  reason     String?
+  createdAt  DateTime                @default(now()) @map("created_at")
+  campaign   Campaign                @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  lead       Lead                    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  messages   EmailMessage[]
+
+  @@unique([campaignId, leadId])
+  @@index([status])
+  @@map("campaign_recipients")
+}
+
+model AiGeneration {
+  id         String   @id @default(cuid())
+  campaignId String   @map("campaign_id")
+  provider   String
+  model      String
+  prompt     Json
+  output     Json
+  confidence Int      @default(0)
+  createdAt  DateTime @default(now()) @map("created_at")
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId])
+  @@map("ai_generations")
+}
+
+model CampaignReview {
+  id         String                 @id @default(cuid())
+  campaignId String                 @map("campaign_id")
+  key        String
+  label      String
+  severity   CampaignReviewSeverity
+  message    String
+  createdAt  DateTime               @default(now()) @map("created_at")
+  campaign   Campaign               @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId])
+  @@index([severity])
+  @@map("campaign_reviews")
+}
+
+model SendingAccount {
+  id            String               @id @default(cuid())
+  name          String               @unique
+  provider      String               @default("smtp")
+  status        SendingAccountStatus @default(NOT_CONFIGURED)
+  fromName      String               @map("from_name")
+  fromEmail     String               @map("from_email")
+  replyTo       String?              @map("reply_to")
+  host          String?
+  port          Int                  @default(587)
+  secure        Boolean              @default(false)
+  username      String?
+  dryRun        Boolean              @default(true) @map("dry_run")
+  lastError     String?              @map("last_error")
+  lastTestAt    DateTime?            @map("last_test_at")
+  createdAt     DateTime             @default(now()) @map("created_at")
+  updatedAt     DateTime             @updatedAt @map("updated_at")
+  limits        SendingLimit?
+  domains       SendingDomain[]
+  sendJobs      SendJob[]
+  emailMessages EmailMessage[]
+
+  @@index([status])
+  @@map("sending_accounts")
+}
+
+model SendingLimit {
+  id                String         @id @default(cuid())
+  sendingAccountId  String         @unique @map("sending_account_id")
+  dailyCap          Int            @default(25) @map("daily_cap")
+  perMinuteCap      Int            @default(2) @map("per_minute_cap")
+  perDomainDailyCap Int            @default(10) @map("per_domain_daily_cap")
+  minDelaySeconds   Int            @default(30) @map("min_delay_seconds")
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
+  sendingAccount    SendingAccount @relation(fields: [sendingAccountId], references: [id], onDelete: Cascade)
+
+  @@map("sending_limits")
+}
+
+model SendingDomain {
+  id               String         @id @default(cuid())
+  sendingAccountId String         @map("sending_account_id")
+  domain           String
+  spfStatus        String         @default("UNKNOWN") @map("spf_status")
+  dkimStatus       String         @default("UNKNOWN") @map("dkim_status")
+  dmarcStatus      String         @default("UNKNOWN") @map("dmarc_status")
+  healthStatus     String         @default("PENDING") @map("health_status")
+  lastCheckedAt    DateTime?      @map("last_checked_at")
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+  sendingAccount   SendingAccount @relation(fields: [sendingAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([sendingAccountId, domain])
+  @@index([domain])
+  @@map("sending_domains")
+}
+
+model SendJob {
+  id               String         @id @default(cuid())
+  campaignId       String         @map("campaign_id")
+  sendingAccountId String         @map("sending_account_id")
+  status           SendJobStatus  @default(QUEUED)
+  scheduledAt      DateTime       @default(now()) @map("scheduled_at")
+  startedAt        DateTime?      @map("started_at")
+  completedAt      DateTime?      @map("completed_at")
+  pausedAt         DateTime?      @map("paused_at")
+  lastError        String?        @map("last_error")
+  totalRecipients  Int            @default(0) @map("total_recipients")
+  queuedMessages   Int            @default(0) @map("queued_messages")
+  sentMessages     Int            @default(0) @map("sent_messages")
+  skippedMessages  Int            @default(0) @map("skipped_messages")
+  failedMessages   Int            @default(0) @map("failed_messages")
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+  campaign         Campaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  sendingAccount   SendingAccount @relation(fields: [sendingAccountId], references: [id], onDelete: Restrict)
+  messages         EmailMessage[]
+
+  @@index([campaignId])
+  @@index([status])
+  @@map("send_jobs")
+}
+
+model EmailMessage {
+  id                  String             @id @default(cuid())
+  sendJobId           String             @map("send_job_id")
+  campaignId          String             @map("campaign_id")
+  campaignRecipientId String             @map("campaign_recipient_id")
+  campaignStepId      String             @map("campaign_step_id")
+  leadId              String             @map("lead_id")
+  sendingAccountId    String             @map("sending_account_id")
+  status              EmailMessageStatus @default(QUEUED)
+  recipientEmail      String             @map("recipient_email")
+  recipientDomain     String             @map("recipient_domain")
+  subject             String
+  bodyText            String             @map("body_text")
+  providerMessageId   String?            @map("provider_message_id")
+  messageIdHeader     String?            @map("message_id_header")
+  error               String?
+  queuedAt            DateTime           @default(now()) @map("queued_at")
+  startedAt           DateTime?          @map("started_at")
+  sentAt              DateTime?          @map("sent_at")
+  skippedAt           DateTime?          @map("skipped_at")
+  failedAt            DateTime?          @map("failed_at")
+  createdAt           DateTime           @default(now()) @map("created_at")
+  updatedAt           DateTime           @updatedAt @map("updated_at")
+  sendJob             SendJob            @relation(fields: [sendJobId], references: [id], onDelete: Cascade)
+  campaign            Campaign           @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaignRecipient   CampaignRecipient  @relation(fields: [campaignRecipientId], references: [id], onDelete: Cascade)
+  campaignStep        CampaignStep       @relation(fields: [campaignStepId], references: [id], onDelete: Cascade)
+  lead                Lead               @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  sendingAccount      SendingAccount     @relation(fields: [sendingAccountId], references: [id], onDelete: Restrict)
+  events              EmailEvent[]
+  inboundReplies      InboundReply[]
+
+  @@index([sendJobId])
+  @@index([campaignId])
+  @@index([leadId])
+  @@index([status])
+  @@index([queuedAt])
+  @@map("email_messages")
+}
+
+model EmailEvent {
+  id         String         @id @default(cuid())
+  type       EmailEventType
+  messageId  String?        @map("message_id")
+  campaignId String?        @map("campaign_id")
+  leadId     String?        @map("lead_id")
+  metadata   Json?
+  createdAt  DateTime       @default(now()) @map("created_at")
+  message    EmailMessage?  @relation(fields: [messageId], references: [id], onDelete: SetNull)
+  campaign   Campaign?      @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  lead       Lead?          @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  @@index([type])
+  @@index([messageId])
+  @@index([campaignId])
+  @@index([leadId])
+  @@map("email_events")
+}
+
+model UnsubscribeToken {
+  id         String    @id @default(cuid())
+  token      String    @unique
+  leadId     String    @map("lead_id")
+  campaignId String?   @map("campaign_id")
+  email      String
+  usedAt     DateTime? @map("used_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  lead       Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  campaign   Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+
+  @@index([leadId])
+  @@index([campaignId])
+  @@map("unsubscribe_tokens")
+}
+
+model InboundReply {
+  id                  String         @id @default(cuid())
+  leadId              String?        @map("lead_id")
+  campaignId          String?        @map("campaign_id")
+  emailMessageId      String?        @map("email_message_id")
+  fromEmail           String         @map("from_email")
+  toEmail             String?        @map("to_email")
+  subject             String
+  bodyText            String         @map("body_text")
+  source              String         @default("manual")
+  providerMessageId   String?        @unique @map("provider_message_id")
+  messageIdHeader     String?        @map("message_id_header")
+  inReplyTo           String?        @map("in_reply_to")
+  raw                 Json?
+  status              ReplyStatus    @default(NEW)
+  intent              ReplyIntent    @default(UNCLEAR)
+  sentiment           ReplySentiment @default(NEUTRAL)
+  aiConfidence        Int            @default(0) @map("ai_confidence")
+  aiSummary           String?        @map("ai_summary")
+  aiSuggestedAction   String?        @map("ai_suggested_action")
+  ownerActionRequired Boolean        @default(true) @map("owner_action_required")
+  autoReplyEligible   Boolean        @default(false) @map("auto_reply_eligible")
+  riskFlags           String[]       @default([]) @map("risk_flags")
+  receivedAt          DateTime       @default(now()) @map("received_at")
+  createdAt           DateTime       @default(now()) @map("created_at")
+  updatedAt           DateTime       @updatedAt @map("updated_at")
+  lead                Lead?          @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  campaign            Campaign?      @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  emailMessage        EmailMessage?  @relation(fields: [emailMessageId], references: [id], onDelete: SetNull)
+  drafts              AiReplyDraft[]
+
+  @@index([leadId])
+  @@index([campaignId])
+  @@index([intent])
+  @@index([status])
+  @@index([receivedAt])
+  @@map("inbound_replies")
+}
+
+model AiReplyDraft {
+  id                String             @id @default(cuid())
+  replyId           String             @map("reply_id")
+  leadId            String?            @map("lead_id")
+  campaignId        String?            @map("campaign_id")
+  offerId           String?            @map("offer_id")
+  status            AiReplyDraftStatus @default(DRAFT)
+  provider          String
+  model             String
+  subject           String
+  bodyText          String             @map("body_text")
+  confidence        Int                @default(0)
+  rationale         String?
+  riskFlags         String[]           @default([]) @map("risk_flags")
+  policyVersion     String             @default("reply-policy-v1") @map("policy_version")
+  providerMessageId String?            @map("provider_message_id")
+  sentAt            DateTime?          @map("sent_at")
+  createdAt         DateTime           @default(now()) @map("created_at")
+  updatedAt         DateTime           @updatedAt @map("updated_at")
+  reply             InboundReply       @relation(fields: [replyId], references: [id], onDelete: Cascade)
+  lead              Lead?              @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  campaign          Campaign?          @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  offer             Offer?             @relation(fields: [offerId], references: [id], onDelete: SetNull)
+
+  @@index([replyId])
+  @@index([leadId])
+  @@index([campaignId])
+  @@index([status])
+  @@map("ai_reply_drafts")
+}
+
+model Deal {
+  id            String     @id @default(cuid())
+  leadId        String     @map("lead_id")
+  campaignId    String?    @map("campaign_id")
+  offerId       String?    @map("offer_id")
+  title         String
+  stage         DealStage  @default(NEW)
+  status        DealStatus @default(OPEN)
+  valueEstimate Int?       @map("value_estimate")
+  currency      String     @default("USD")
+  priorityScore Int        @default(0) @map("priority_score")
+  nextAction    String?    @map("next_action")
+  nextActionAt  DateTime?  @map("next_action_at")
+  lastReplyId   String?    @map("last_reply_id")
+  ownerNotes    String?    @map("owner_notes")
+  createdAt     DateTime   @default(now()) @map("created_at")
+  updatedAt     DateTime   @updatedAt @map("updated_at")
+  closedAt      DateTime?  @map("closed_at")
+  lead          Lead       @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  campaign      Campaign?  @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  offer         Offer?     @relation(fields: [offerId], references: [id], onDelete: SetNull)
+
+  @@unique([leadId])
+  @@index([stage])
+  @@index([status])
+  @@index([priorityScore])
+  @@map("deals")
+}

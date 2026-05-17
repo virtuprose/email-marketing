@@ -1,0 +1,82 @@
+import { describe, expect, it } from "vitest";
+import { ImportRowStatus } from "@prisma/client";
+import {
+  buildPreparedLead,
+  classifyImportCandidate,
+  guessMapping,
+  isValidEmail,
+  normalizeEmail
+} from "./imports";
+
+describe("lead import helpers", () => {
+  it("normalizes and validates email addresses", () => {
+    expect(normalizeEmail("  MOH@VIRTUPROSE.COM ")).toBe("moh@virtuprose.com");
+    expect(isValidEmail("moh@virtuprose.com")).toBe(true);
+    expect(isValidEmail("broken-email")).toBe(false);
+  });
+
+  it("guesses common CSV headers", () => {
+    const mapping = guessMapping(["Email Address", "Company Name", "Lead Source", "Legal Basis"]);
+
+    expect(mapping.email).toBe("Email Address");
+    expect(mapping.company).toBe("Company Name");
+    expect(mapping.source).toBe("Lead Source");
+    expect(mapping.legalBasis).toBe("Legal Basis");
+  });
+
+  it("flags rows missing compliance data", () => {
+    const lead = buildPreparedLead(
+      {
+        email: "founder@example.com",
+        company: "Example Co"
+      },
+      {
+        email: "email",
+        company: "company",
+        country: "country",
+        source: "source",
+        legalBasis: "legal_basis"
+      }
+    );
+
+    expect(lead.emailValid).toBe(true);
+    expect(lead.issues).toContain("Missing country/region");
+    expect(lead.issues).toContain("Missing lead source");
+    expect(lead.issues).toContain("Missing legal basis");
+  });
+
+  it("classifies duplicates and suppressed rows before they can become leads", () => {
+    const prepared = buildPreparedLead(
+      {
+        email: "founder@example.com",
+        country: "United States",
+        source: "manual",
+        legal_basis: "legitimate interest"
+      },
+      {
+        email: "email",
+        country: "country",
+        source: "source",
+        legalBasis: "legal_basis"
+      }
+    );
+
+    expect(
+      classifyImportCandidate({
+        prepared,
+        seenInFile: new Set(["founder@example.com"]),
+        existingEmails: new Set(),
+        suppressedEmails: new Set()
+      }).status
+    ).toBe(ImportRowStatus.DUPLICATE);
+
+    expect(
+      classifyImportCandidate({
+        prepared,
+        seenInFile: new Set(),
+        existingEmails: new Set(),
+        suppressedEmails: new Set(["founder@example.com"])
+      }).status
+    ).toBe(ImportRowStatus.SUPPRESSED);
+  });
+});
