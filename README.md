@@ -1,6 +1,6 @@
 # Virtuprose AI Email Sales Agent
 
-Internal single-user product for importing leads, managing suppression/compliance data, preparing Virtuprose offers, and generating reviewed AI-assisted email campaign drafts.
+Internal single-user product for importing leads, managing suppression/compliance data, preparing Virtuprose offers, generating reviewed AI-assisted email campaign drafts, sending compliant email campaigns, and running Meta WhatsApp Cloud API template campaigns with AI reply qualification.
 
 ## Local Setup
 
@@ -37,6 +37,14 @@ OPENAI_CAMPAIGN_MODEL="gpt-4.1-mini"
 OPENAI_REPLY_MODEL="gpt-4.1-mini"
 INBOUND_WEBHOOK_SECRET=""
 SMTP_PASS=""
+META_GRAPH_API_VERSION="v25.0"
+META_WHATSAPP_ACCESS_TOKEN=""
+META_PHONE_NUMBER_ID=""
+META_WABA_ID=""
+META_APP_SECRET=""
+META_WEBHOOK_VERIFY_TOKEN=""
+META_WHATSAPP_DRY_RUN="true"
+META_VALIDATE_SIGNATURE="true"
 ```
 
 ## Phase 0 Checks
@@ -125,3 +133,15 @@ Body: {
 9. Work hot leads from `/pipeline` and mark outcomes as won, lost, proposal sent, or follow-up later.
 
 For real sending, configure a real reply-to inbox, set `SMTP_PASS`, disable dry-run only after test delivery is confirmed, and keep the worker running.
+
+## WhatsApp Cloud API Scope
+
+- Direct Meta WhatsApp Cloud API integration, not Twilio.
+- Approved Meta template storage, submission, status sync, and test sending.
+- WhatsApp campaign builder with offer, audience, template, variable mapping, caps, send window, and owner approval.
+- `whatsapp-sending` BullMQ queue for template campaigns.
+- Meta webhook route at `/api/webhooks/meta/whatsapp`.
+- AI classification and reply drafting for inbound WhatsApp replies inside the 24-hour service window.
+- STOP/unsubscribe/complaint handling blocks future WhatsApp sends.
+
+Current handoff details, Meta setup notes, and operational runbooks are in [`docs/DEVELOPER_HANDOFF.md`](docs/DEVELOPER_HANDOFF.md).

@@ -2,6 +2,7 @@ import { ImportRowStatus } from "@prisma/client";
 
 export type ImportMapping = {
   email: string;
+  phone?: string;
   firstName?: string;
   lastName?: string;
   company?: string;
@@ -14,6 +15,8 @@ export type ImportMapping = {
   sourceUrl?: string;
   legalBasis?: string;
   consentNotes?: string;
+  whatsappOptIn?: string;
+  whatsappConsentSource?: string;
   tags?: string;
 };
 
@@ -28,6 +31,11 @@ export type FieldDefinition = {
 
 export const FIELD_DEFINITIONS: FieldDefinition[] = [
   { key: "email", label: "Email", required: true, aliases: ["email", "email address", "work email"] },
+  {
+    key: "phone",
+    label: "Phone / WhatsApp",
+    aliases: ["phone", "phone number", "mobile", "mobile phone", "whatsapp", "whatsapp number"]
+  },
   { key: "firstName", label: "First name", aliases: ["first name", "firstname", "given name", "name"] },
   { key: "lastName", label: "Last name", aliases: ["last name", "lastname", "surname"] },
   { key: "company", label: "Company", aliases: ["company", "company name", "organization", "business"] },
@@ -44,12 +52,24 @@ export const FIELD_DEFINITIONS: FieldDefinition[] = [
     aliases: ["legal basis", "consent", "permission", "lawful basis"]
   },
   { key: "consentNotes", label: "Consent/source notes", aliases: ["consent notes", "notes", "source notes"] },
+  {
+    key: "whatsappOptIn",
+    label: "WhatsApp opt-in",
+    aliases: ["whatsapp opt in", "whatsapp opt-in", "wa opt in", "opted in whatsapp"]
+  },
+  {
+    key: "whatsappConsentSource",
+    label: "WhatsApp consent source",
+    aliases: ["whatsapp consent source", "wa consent source", "whatsapp permission source"]
+  },
   { key: "tags", label: "Tags", aliases: ["tags", "tag", "segment", "segments"] }
 ];
 
 export type PreparedLead = {
   email: string;
   emailValid: boolean;
+  phoneE164?: string;
+  phoneValid: boolean;
   firstName?: string;
   lastName?: string;
   company?: string;
@@ -62,6 +82,8 @@ export type PreparedLead = {
   sourceUrl?: string;
   legalBasis?: string;
   consentNotes?: string;
+  whatsappOptIn: boolean;
+  whatsappConsentSource?: string;
   tags: string[];
   issues: string[];
 };
@@ -78,6 +100,24 @@ export function normalizeEmail(value: unknown) {
 
 export function isValidEmail(email: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+export function normalizePhoneE164(value: unknown) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "";
+  const hasPlus = raw.startsWith("+");
+  const digits = raw.replace(/\D/g, "");
+  if (!digits) return "";
+  return `${hasPlus ? "+" : "+"}${digits}`;
+}
+
+export function isValidE164(phone: string) {
+  return /^\+[1-9]\d{7,14}$/.test(phone);
+}
+
+export function parseBooleanish(value: string) {
+  const normalized = value.trim().toLowerCase();
+  return ["yes", "y", "true", "1", "opted in", "opt-in", "allowed", "consented"].includes(normalized);
 }
 
 export function guessMapping(headers: string[]) {
@@ -118,6 +158,7 @@ function splitTags(value: string) {
 
 export function buildPreparedLead(row: Record<string, unknown>, mapping: ImportMapping): PreparedLead {
   const email = normalizeEmail(readMappedValue(row, mapping, "email"));
+  const phoneE164 = normalizePhoneE164(readMappedValue(row, mapping, "phone"));
   const firstName = readMappedValue(row, mapping, "firstName");
   const lastName = readMappedValue(row, mapping, "lastName");
   const company = readMappedValue(row, mapping, "company");
@@ -130,11 +171,18 @@ export function buildPreparedLead(row: Record<string, unknown>, mapping: ImportM
   const sourceUrl = readMappedValue(row, mapping, "sourceUrl");
   const legalBasis = readMappedValue(row, mapping, "legalBasis");
   const consentNotes = readMappedValue(row, mapping, "consentNotes");
+  const whatsappOptIn = parseBooleanish(readMappedValue(row, mapping, "whatsappOptIn"));
+  const whatsappConsentSource = readMappedValue(row, mapping, "whatsappConsentSource");
   const tags = splitTags(readMappedValue(row, mapping, "tags"));
   const issues: string[] = [];
   const emailValid = isValidEmail(email);
+  const phoneValid = !phoneE164 || isValidE164(phoneE164);
 
   if (!emailValid) issues.push("Invalid email address");
+  if (phoneE164 && !phoneValid) issues.push("Invalid WhatsApp phone number");
+  if (phoneE164 && whatsappOptIn && !whatsappConsentSource) {
+    issues.push("Missing WhatsApp consent source");
+  }
   if (!country) issues.push("Missing country/region");
   if (!source) issues.push("Missing lead source");
   if (!legalBasis) issues.push("Missing legal basis");
@@ -142,6 +190,8 @@ export function buildPreparedLead(row: Record<string, unknown>, mapping: ImportM
   return {
     email,
     emailValid,
+    phoneE164: phoneValid ? phoneE164 : undefined,
+    phoneValid,
     firstName,
     lastName,
     company,
@@ -154,6 +204,8 @@ export function buildPreparedLead(row: Record<string, unknown>, mapping: ImportM
     sourceUrl,
     legalBasis,
     consentNotes,
+    whatsappOptIn,
+    whatsappConsentSource,
     tags,
     issues
   };
@@ -162,20 +214,35 @@ export function buildPreparedLead(row: Record<string, unknown>, mapping: ImportM
 export function classifyImportCandidate({
   prepared,
   seenInFile,
+  seenPhonesInFile,
   existingEmails,
+  existingPhones,
   suppressedEmails
 }: {
   prepared: PreparedLead;
   seenInFile: Set<string>;
+  seenPhonesInFile?: Set<string>;
   existingEmails: Set<string>;
+  existingPhones?: Set<string>;
   suppressedEmails: Set<string>;
 }) {
   const issues = [...prepared.issues];
 
-  if (!prepared.emailValid) {
+  if (!prepared.emailValid || !prepared.phoneValid) {
     return {
       status: ImportRowStatus.INVALID,
       issues,
+      shouldCreateLead: false
+    };
+  }
+
+  if (
+    prepared.phoneE164 &&
+    (seenPhonesInFile?.has(prepared.phoneE164) || existingPhones?.has(prepared.phoneE164))
+  ) {
+    return {
+      status: ImportRowStatus.DUPLICATE,
+      issues: [...issues, "Duplicate WhatsApp phone"],
       shouldCreateLead: false
     };
   }

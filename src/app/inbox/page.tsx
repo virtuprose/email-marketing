@@ -126,7 +126,9 @@ export default async function InboxPage({ searchParams }: InboxPageProps) {
                   }`}
                 >
                   <span className="reply-list-main">
-                    <strong>{reply.lead?.company || reply.lead?.email || reply.fromEmail}</strong>
+                    <strong>
+                      {reply.lead?.company || reply.lead?.email || reply.fromEmail || reply.fromPhoneE164}
+                    </strong>
                     <span>{reply.subject}</span>
                   </span>
                   <span className="reply-list-meta">
@@ -271,8 +273,8 @@ function ReplyDetailPanel({
     <aside className="panel">
       <div className="panel-header">
         <div>
-          <h2>{reply.lead?.company || reply.fromEmail}</h2>
-          <p className="muted">{reply.fromEmail}</p>
+          <h2>{reply.lead?.company || reply.fromEmail || reply.fromPhoneE164}</h2>
+          <p className="muted">{reply.fromEmail || reply.fromPhoneE164}</p>
         </div>
         <StatusBadge label={replyStatusLabels[reply.status]} status={reply.status} />
       </div>

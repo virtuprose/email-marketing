@@ -76,7 +76,7 @@ export function CsvImportClient() {
           <div>
             <h2>Upload CSV</h2>
             <p className="muted">
-              Use a list with email, source, country, and legal basis whenever possible.
+              Use a list with email, source, country, legal basis, and WhatsApp opt-in when sending WhatsApp.
             </p>
           </div>
         </div>
@@ -110,7 +110,7 @@ export function CsvImportClient() {
           <div>
             <h2>Map fields</h2>
             <p className="muted">
-              Email is required. Missing source, country, or legal basis will be imported as flagged leads.
+              Email is required. WhatsApp sends also need phone, opt-in, and consent source.
             </p>
           </div>
         </div>

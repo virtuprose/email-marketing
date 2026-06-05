@@ -5,7 +5,9 @@ import {
   classifyImportCandidate,
   guessMapping,
   isValidEmail,
-  normalizeEmail
+  isValidE164,
+  normalizeEmail,
+  normalizePhoneE164
 } from "./imports";
 
 describe("lead import helpers", () => {
@@ -13,6 +15,12 @@ describe("lead import helpers", () => {
     expect(normalizeEmail("  MOH@VIRTUPROSE.COM ")).toBe("moh@virtuprose.com");
     expect(isValidEmail("moh@virtuprose.com")).toBe(true);
     expect(isValidEmail("broken-email")).toBe(false);
+  });
+
+  it("normalizes and validates WhatsApp phone numbers", () => {
+    expect(normalizePhoneE164("whatsapp:+1 (202) 555-0101")).toBe("+12025550101");
+    expect(isValidE164("+12025550101")).toBe(true);
+    expect(isValidE164("+1555")).toBe(false);
   });
 
   it("guesses common CSV headers", () => {
@@ -78,5 +86,35 @@ describe("lead import helpers", () => {
         suppressedEmails: new Set(["founder@example.com"])
       }).status
     ).toBe(ImportRowStatus.SUPPRESSED);
+  });
+
+  it("blocks duplicate WhatsApp phone numbers", () => {
+    const prepared = buildPreparedLead(
+      {
+        email: "founder@example.com",
+        phone: "+12025550101",
+        country: "United States",
+        source: "manual",
+        legal_basis: "consent"
+      },
+      {
+        email: "email",
+        phone: "phone",
+        country: "country",
+        source: "source",
+        legalBasis: "legal_basis"
+      }
+    );
+
+    expect(
+      classifyImportCandidate({
+        prepared,
+        seenInFile: new Set(),
+        seenPhonesInFile: new Set(["+12025550101"]),
+        existingEmails: new Set(),
+        existingPhones: new Set(),
+        suppressedEmails: new Set()
+      }).status
+    ).toBe(ImportRowStatus.DUPLICATE);
   });
 });

@@ -17,6 +17,20 @@ Use this checklist before moving from local dry-run testing to real outreach.
 - Confirm `SMTP_PASS` is present before disabling dry-run.
 - Run a test send and confirm mailbox receipt, not only a successful API response.
 
+## WhatsApp Cloud API
+
+- `META_GRAPH_API_VERSION` is set to the Graph version used by the app.
+- `META_WHATSAPP_ACCESS_TOKEN` is present and not expired.
+- `META_PHONE_NUMBER_ID` matches the active connected Meta phone number.
+- `META_WABA_ID` matches the active WhatsApp Business Account.
+- `META_APP_SECRET` and `META_WEBHOOK_VERIFY_TOKEN` are set for webhooks.
+- `META_WHATSAPP_DRY_RUN` is `true` until an intentional live test.
+- Phone number status is `CONNECTED` in Meta.
+- The token debug output shows `whatsapp_business_messaging` targeted to the intended WABA.
+- At least one Meta template is `APPROVED` before any real outbound WhatsApp send.
+- The dashboard template status has been synced after Meta approval.
+- Webhook callback uses public HTTPS, not localhost.
+
 ## Domain And Compliance
 
 - SPF is configured for the sending provider.
@@ -38,3 +52,5 @@ Use this checklist before moving from local dry-run testing to real outreach.
 ## Operating Rule
 
 At 100k/month, do not jump straight to full volume. Ramp only after bounce, complaint, unsubscribe, reply quality, and test-inbox delivery are healthy.
+
+For WhatsApp, start even lower. Use small daily caps until template quality, user replies, opt-outs, and Meta quality rating are stable.

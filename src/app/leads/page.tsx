@@ -6,7 +6,7 @@ import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
 import { formatDate } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
-import { leadStatusLabels } from "@/lib/status";
+import { leadStatusLabels, whatsappLeadStatusLabels } from "@/lib/status";
 
 export const dynamic = "force-dynamic";
 
@@ -102,6 +102,7 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
                 <th>Company</th>
                 <th>Status</th>
                 <th>Source</th>
+                <th>WhatsApp</th>
                 <th>Legal basis</th>
                 <th>Tags</th>
                 <th>Imported</th>
@@ -123,6 +124,20 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
                       <StatusBadge label={leadStatusLabels[lead.status]} status={lead.status} />
                     </td>
                     <td>{lead.source || <span className="muted">Missing</span>}</td>
+                    <td>
+                      {lead.phoneE164 ? (
+                        <>
+                          {lead.phoneE164}
+                          <br />
+                          <StatusBadge
+                            label={whatsappLeadStatusLabels[lead.whatsappStatus]}
+                            status={lead.whatsappStatus}
+                          />
+                        </>
+                      ) : (
+                        <span className="muted">No phone</span>
+                      )}
+                    </td>
                     <td>{lead.legalBasis || <span className="muted">Missing</span>}</td>
                     <td>
                       <div className="tag-list">
@@ -142,7 +157,7 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={7}>
+                  <td colSpan={8}>
                     <div className="empty-state">No leads match the current filters.</div>
                   </td>
                 </tr>

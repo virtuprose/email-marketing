@@ -10,6 +10,7 @@ import {
   Send,
   Settings,
   ShieldAlert,
+  MessageCircle,
   UsersRound
 } from "lucide-react";
 import Link from "next/link";
@@ -23,6 +24,7 @@ const navItems = [
   { href: "/leads/import", label: "Import", icon: ListFilter },
   { href: "/offers", label: "Offers", icon: Library },
   { href: "/campaigns", label: "Campaigns", icon: Send },
+  { href: "/whatsapp", label: "WhatsApp", icon: MessageCircle },
   { href: "/suppression", label: "Suppression", icon: ShieldAlert },
   { href: "/inbox", label: "AI Inbox", icon: Inbox },
   { href: "/pipeline", label: "Pipeline", icon: Bot },

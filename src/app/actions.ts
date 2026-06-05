@@ -12,7 +12,12 @@ import {
   LeadStatus,
   Prisma,
   SendJobStatus,
-  SuppressionReason
+  SuppressionReason,
+  WhatsappCampaignStatus,
+  WhatsappEventType,
+  WhatsappTemplateCategory,
+  WhatsappTemplateStatus,
+  WhatsappMessageStatus
 } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -27,7 +32,7 @@ import {
 import { linesToArray } from "@/lib/format";
 import { normalizeEmail, isValidEmail } from "@/lib/imports";
 import { prisma } from "@/lib/prisma";
-import { emailQueue } from "@/lib/queue";
+import { emailQueue, whatsappQueue } from "@/lib/queue";
 import {
   ingestInboundReply,
   markReplyAsHot,
@@ -44,6 +49,16 @@ import {
   sendingAccountStatus,
   pauseSendJob
 } from "@/lib/sending";
+import {
+  parseTemplateVariables,
+  scheduleWhatsappCampaignSend,
+  sendMetaTemplateMessage,
+  submitMetaTemplateForApproval,
+  syncMetaTemplateStatus,
+  pauseWhatsappSendJob,
+  whatsappAudienceWhere,
+  type WhatsappAudienceFilter
+} from "@/lib/whatsapp";
 
 const offerSchema = z.object({
   name: z.string().min(3),
@@ -113,6 +128,37 @@ const dealStageSchema = z.object({
   dealId: z.string().min(1),
   stage: z.nativeEnum(DealStage),
   notes: z.string().optional()
+});
+
+const whatsappTemplateSchema = z.object({
+  id: z.string().optional(),
+  name: z.string().min(3),
+  metaTemplateName: z
+    .string()
+    .min(3)
+    .regex(/^[a-z0-9_]+$/),
+  language: z.string().min(2).default("en"),
+  category: z.nativeEnum(WhatsappTemplateCategory),
+  status: z.nativeEnum(WhatsappTemplateStatus),
+  bodyPreview: z.string().optional(),
+  active: z.boolean()
+});
+
+const whatsappCampaignSchema = z.object({
+  name: z.string().min(3),
+  offerId: z.string().min(1),
+  templateId: z.string().min(1),
+  status: z.nativeEnum(LeadStatus).or(z.literal("ALL")),
+  tag: z.string().optional(),
+  country: z.string().optional(),
+  maxRecipients: z.coerce.number().int().min(1).max(5000),
+  dailyCap: z.coerce.number().int().min(1).max(500),
+  sendWindowStart: z.string().optional(),
+  sendWindowEnd: z.string().optional()
+});
+
+const whatsappCampaignIdSchema = z.object({
+  campaignId: z.string().min(1)
 });
 
 const blockedLeadStatuses: LeadStatus[] = [
@@ -960,4 +1006,337 @@ export async function rollbackImportBatch(formData: FormData) {
   revalidatePath("/");
   revalidatePath("/leads");
   revalidatePath(`/leads/import/${id}`);
+}
+
+export async function saveWhatsappTemplate(formData: FormData) {
+  const parsed = whatsappTemplateSchema.parse({
+    id: String(formData.get("id") ?? "").trim() || undefined,
+    name: formData.get("name"),
+    metaTemplateName: formData.get("metaTemplateName"),
+    language: String(formData.get("language") ?? "en").trim() || "en",
+    category: formData.get("category"),
+    status: formData.get("status"),
+    bodyPreview: String(formData.get("bodyPreview") ?? "").trim(),
+    active: formData.get("active") === "on"
+  });
+  const variables = parseTemplateVariables(formData.get("variables"));
+
+  const template = await prisma.whatsappTemplate.upsert({
+    where: { metaTemplateName: parsed.metaTemplateName },
+    update: {
+      name: parsed.name,
+      metaTemplateName: parsed.metaTemplateName,
+      language: parsed.language,
+      category: parsed.category,
+      status: parsed.status,
+      variables,
+      bodyPreview: parsed.bodyPreview || null,
+      active: parsed.active
+    },
+    create: {
+      name: parsed.name,
+      metaTemplateName: parsed.metaTemplateName,
+      language: parsed.language,
+      category: parsed.category,
+      status: parsed.status,
+      variables,
+      bodyPreview: parsed.bodyPreview || null,
+      active: parsed.active
+    }
+  });
+
+  await prisma.auditLog.create({
+    data: {
+      action: "whatsapp_template.saved",
+      entityType: "whatsapp_template",
+      entityId: template.id,
+      metadata: { metaTemplateName: template.metaTemplateName, variables }
+    }
+  });
+
+  revalidatePath("/whatsapp");
+  revalidatePath("/whatsapp/templates");
+  redirect("/whatsapp/templates");
+}
+
+export async function sendWhatsappTemplateTest(formData: FormData) {
+  const templateId = z.string().min(1).parse(formData.get("templateId"));
+  const phoneResult = z
+    .string()
+    .regex(/^\+[1-9]\d{7,14}$/)
+    .safeParse(String(formData.get("toPhoneE164") ?? "").trim());
+  if (!phoneResult.success) {
+    redirect(
+      "/whatsapp/templates?testError=Enter%20the%20test%20phone%20in%20international%20format%2C%20for%20example%20%2B96560000000."
+    );
+  }
+  const toPhoneE164 = phoneResult.data;
+  const template = await prisma.whatsappTemplate.findUnique({ where: { id: templateId } });
+  if (!template) {
+    redirect("/whatsapp/templates?testError=WhatsApp%20template%20not%20found.");
+  }
+
+  const contentVariables = Object.fromEntries(
+    template.variables.map((variable) => [variable, String(formData.get(`testVar:${variable}`) ?? "Test")])
+  );
+  let result: Awaited<ReturnType<typeof sendMetaTemplateMessage>>;
+  try {
+    result = await sendMetaTemplateMessage({
+      toPhoneE164,
+      templateName: template.metaTemplateName,
+      language: template.language,
+      contentVariables
+    });
+  } catch (error) {
+    const message = encodeURIComponent(error instanceof Error ? error.message : "Meta test send failed.");
+    redirect(`/whatsapp/templates?testError=${message}`);
+  }
+
+  await prisma.whatsappEvent.create({
+    data: {
+      type: WhatsappEventType.TEST_SENT,
+      metadata: {
+        templateId,
+        toPhoneE164,
+        providerMessageId: result.providerMessageId,
+        dryRun: result.dryRun
+      }
+    }
+  });
+
+  revalidatePath("/whatsapp/templates");
+  redirect(
+    "/whatsapp/templates?testOk=WhatsApp%20test%20send%20recorded.%20Check%20dry-run%20or%20Meta%20logs."
+  );
+}
+
+export async function submitWhatsappTemplateToMeta(formData: FormData) {
+  const templateId = z.string().min(1).parse(formData.get("templateId"));
+  const template = await prisma.whatsappTemplate.findUnique({ where: { id: templateId } });
+  if (!template) throw new Error("WhatsApp template not found.");
+
+  const exampleVariables = (template.exampleVariables || {}) as Record<string, string>;
+  const result = await submitMetaTemplateForApproval({
+    name: template.metaTemplateName,
+    language: template.language,
+    category: template.category,
+    bodyText: template.bodyPreview || "",
+    exampleVariables
+  });
+
+  await prisma.whatsappTemplate.update({
+    where: { id: template.id },
+    data: {
+      metaTemplateId: result.metaTemplateId,
+      status: result.status
+    }
+  });
+  await prisma.auditLog.create({
+    data: {
+      action: "whatsapp_template.submitted_to_meta",
+      entityType: "whatsapp_template",
+      entityId: template.id,
+      metadata: { dryRun: result.dryRun, metaTemplateId: result.metaTemplateId, status: result.status }
+    }
+  });
+
+  revalidatePath("/whatsapp/templates");
+}
+
+export async function syncWhatsappTemplateFromMeta(formData: FormData) {
+  const templateId = z.string().min(1).parse(formData.get("templateId"));
+  const template = await prisma.whatsappTemplate.findUnique({ where: { id: templateId } });
+  if (!template) throw new Error("WhatsApp template not found.");
+
+  const result = await syncMetaTemplateStatus({
+    templateName: template.metaTemplateName,
+    language: template.language
+  });
+
+  await prisma.whatsappTemplate.update({
+    where: { id: template.id },
+    data: {
+      metaTemplateId: result.metaTemplateId || template.metaTemplateId,
+      status: result.status
+    }
+  });
+  await prisma.auditLog.create({
+    data: {
+      action: "whatsapp_template.synced_from_meta",
+      entityType: "whatsapp_template",
+      entityId: template.id,
+      metadata: { dryRun: result.dryRun, metaTemplateId: result.metaTemplateId, status: result.status }
+    }
+  });
+
+  revalidatePath("/whatsapp/templates");
+}
+
+export async function createWhatsappCampaign(formData: FormData) {
+  const parsed = whatsappCampaignSchema.parse({
+    name: formData.get("name"),
+    offerId: formData.get("offerId"),
+    templateId: formData.get("templateId"),
+    status: formData.get("status"),
+    tag: String(formData.get("tag") ?? "").trim() || undefined,
+    country: String(formData.get("country") ?? "").trim() || undefined,
+    maxRecipients: formData.get("maxRecipients"),
+    dailyCap: formData.get("dailyCap"),
+    sendWindowStart: String(formData.get("sendWindowStart") ?? "").trim() || undefined,
+    sendWindowEnd: String(formData.get("sendWindowEnd") ?? "").trim() || undefined
+  });
+  if (formData.get("ownerApproval") !== "on") {
+    throw new Error("Owner approval checkbox is required before creating a WhatsApp send campaign.");
+  }
+
+  const filter: WhatsappAudienceFilter = {
+    status: parsed.status,
+    tag: parsed.tag,
+    country: parsed.country,
+    maxRecipients: parsed.maxRecipients
+  };
+  const [offer, template] = await Promise.all([
+    prisma.offer.findUnique({ where: { id: parsed.offerId } }),
+    prisma.whatsappTemplate.findUnique({ where: { id: parsed.templateId } })
+  ]);
+  if (!offer || !offer.active) throw new Error("Select an active offer before creating a WhatsApp campaign.");
+  if (!template || !template.active) throw new Error("Select an active WhatsApp template.");
+
+  const variableMapping = Object.fromEntries(
+    template.variables.map((variable) => [variable, String(formData.get(`var:${variable}`) ?? "firstName")])
+  );
+  const leads = await prisma.lead.findMany({
+    where: whatsappAudienceWhere(filter),
+    orderBy: { createdAt: "desc" },
+    take: filter.maxRecipients
+  });
+  const reviewBlocked = template.status !== WhatsappTemplateStatus.APPROVED || leads.length === 0;
+
+  const campaign = await prisma.whatsappCampaign.create({
+    data: {
+      name: parsed.name,
+      status: reviewBlocked ? WhatsappCampaignStatus.REVIEW_BLOCKED : WhatsappCampaignStatus.REVIEW_READY,
+      offerId: parsed.offerId,
+      templateId: parsed.templateId,
+      audienceFilter: filter as unknown as Prisma.InputJsonObject,
+      variableMapping: variableMapping as Prisma.InputJsonObject,
+      estimatedRecipients: leads.length,
+      dailyCap: parsed.dailyCap,
+      sendWindowStart: parsed.sendWindowStart || null,
+      sendWindowEnd: parsed.sendWindowEnd || null,
+      recipients: {
+        create: leads.map((lead) => ({
+          leadId: lead.id,
+          status: "READY"
+        }))
+      }
+    }
+  });
+
+  await prisma.auditLog.create({
+    data: {
+      action: "whatsapp_campaign.created",
+      entityType: "whatsapp_campaign",
+      entityId: campaign.id,
+      metadata: {
+        templateId: template.id,
+        offerId: offer.id,
+        estimatedRecipients: leads.length,
+        reviewBlocked
+      }
+    }
+  });
+
+  revalidatePath("/whatsapp");
+  redirect(`/whatsapp/campaigns/${campaign.id}`);
+}
+
+export async function approveWhatsappCampaign(formData: FormData) {
+  const parsed = whatsappCampaignIdSchema.parse({ campaignId: formData.get("campaignId") });
+  const campaign = await prisma.whatsappCampaign.findUnique({
+    where: { id: parsed.campaignId },
+    include: { template: true, recipients: true }
+  });
+  if (!campaign) throw new Error("WhatsApp campaign not found.");
+  if (campaign.template.status !== WhatsappTemplateStatus.APPROVED || !campaign.template.active) {
+    throw new Error("The selected WhatsApp template must be active and approved.");
+  }
+  if (!campaign.recipients.length) {
+    throw new Error("Campaign has no eligible opted-in WhatsApp recipients.");
+  }
+
+  await prisma.whatsappCampaign.update({
+    where: { id: campaign.id },
+    data: { status: WhatsappCampaignStatus.APPROVED, approvedAt: new Date() }
+  });
+  await prisma.auditLog.create({
+    data: {
+      action: "whatsapp_campaign.approved",
+      entityType: "whatsapp_campaign",
+      entityId: campaign.id
+    }
+  });
+
+  revalidatePath("/whatsapp");
+  revalidatePath(`/whatsapp/campaigns/${campaign.id}`);
+}
+
+export async function scheduleApprovedWhatsappCampaign(formData: FormData) {
+  const parsed = whatsappCampaignIdSchema.parse({ campaignId: formData.get("campaignId") });
+  const sendJobId = await scheduleWhatsappCampaignSend(parsed.campaignId);
+
+  revalidatePath("/whatsapp");
+  revalidatePath(`/whatsapp/campaigns/${parsed.campaignId}`);
+  redirect(`/whatsapp/campaigns/${parsed.campaignId}?sendJob=${sendJobId}`);
+}
+
+export async function pauseWhatsappCampaignSending(formData: FormData) {
+  const parsed = whatsappCampaignIdSchema.parse({ campaignId: formData.get("campaignId") });
+  const activeJobs = await prisma.whatsappSendJob.findMany({
+    where: { campaignId: parsed.campaignId, status: { in: [SendJobStatus.QUEUED, SendJobStatus.RUNNING] } },
+    select: { id: true }
+  });
+
+  for (const job of activeJobs) {
+    await pauseWhatsappSendJob(job.id, "Paused by owner.");
+  }
+  await prisma.whatsappCampaign.update({
+    where: { id: parsed.campaignId },
+    data: { status: WhatsappCampaignStatus.PAUSED }
+  });
+
+  revalidatePath("/whatsapp");
+  revalidatePath(`/whatsapp/campaigns/${parsed.campaignId}`);
+}
+
+export async function resumeWhatsappCampaignSending(formData: FormData) {
+  const parsed = whatsappCampaignIdSchema.parse({ campaignId: formData.get("campaignId") });
+  const queue = whatsappQueue();
+  const jobs = await prisma.whatsappSendJob.findMany({
+    where: { campaignId: parsed.campaignId, status: SendJobStatus.PAUSED },
+    include: { messages: { where: { status: WhatsappMessageStatus.QUEUED } } }
+  });
+
+  for (const job of jobs) {
+    await prisma.whatsappSendJob.update({
+      where: { id: job.id },
+      data: { status: SendJobStatus.QUEUED, pausedAt: null, lastError: null }
+    });
+    for (const message of job.messages) {
+      await queue.add(
+        "whatsapp.send",
+        { messageId: message.id },
+        { delay: Math.max(0, message.queuedAt.getTime() - Date.now()) }
+      );
+    }
+  }
+
+  await queue.close();
+  await prisma.whatsappCampaign.update({
+    where: { id: parsed.campaignId },
+    data: { status: WhatsappCampaignStatus.SCHEDULED }
+  });
+
+  revalidatePath("/whatsapp");
+  revalidatePath(`/whatsapp/campaigns/${parsed.campaignId}`);
 }

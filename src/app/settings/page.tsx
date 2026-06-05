@@ -17,6 +17,12 @@ import {
   smtpPasswordConfigured
 } from "@/lib/sending";
 import { sendingAccountStatusLabels } from "@/lib/status";
+import {
+  appBaseUrl,
+  isMetaWhatsappConfigured,
+  isMetaWhatsappDryRun,
+  WHATSAPP_WEBHOOK_PATH
+} from "@/lib/whatsapp";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +38,9 @@ export default async function SettingsPage() {
   const openAiConfigured = Boolean(process.env.OPENAI_API_KEY);
   const inboundSecretConfigured = Boolean(process.env.INBOUND_WEBHOOK_SECRET);
   const smtpPassConfigured = smtpPasswordConfigured();
+  const metaConfigured = isMetaWhatsappConfigured();
+  const metaDryRun = isMetaWhatsappDryRun();
+  const metaSignatureValidation = process.env.META_VALIDATE_SIGNATURE !== "false";
 
   return (
     <>
@@ -297,6 +306,11 @@ export default async function SettingsPage() {
               ready={smtpPassConfigured || account.dryRun}
               fallback="Dry-run required"
             />
+            <ReadinessRow
+              label="Meta WhatsApp"
+              ready={metaConfigured || metaDryRun}
+              fallback="Missing Meta env"
+            />
 
             <form action={updateSendingControl} className="kill-switch">
               <label className="checkbox-field">
@@ -335,6 +349,41 @@ export default async function SettingsPage() {
             {inboundSecretConfigured
               ? "Inbound webhook is protected by INBOUND_WEBHOOK_SECRET."
               : "Set INBOUND_WEBHOOK_SECRET before exposing the inbound endpoint publicly."}
+          </div>
+        </div>
+      </section>
+
+      <section className="panel" style={{ marginTop: 16 }}>
+        <div className="panel-header">
+          <div>
+            <h2>Meta WhatsApp endpoint</h2>
+            <p className="muted">Use this callback URL in Meta after the app is reachable publicly.</p>
+          </div>
+        </div>
+        <div className="panel-body stack">
+          <div className="profile-row">
+            <span>Callback URL</span>
+            <span>{`${appBaseUrl()}${WHATSAPP_WEBHOOK_PATH}`}</span>
+          </div>
+          <div className="profile-row">
+            <span>Meta mode</span>
+            <StatusBadge label={metaDryRun ? "Dry-run" : "Live"} status={metaDryRun ? "DRAFT" : "PASS"} />
+          </div>
+          <div className="profile-row">
+            <span>Signature validation</span>
+            <StatusBadge
+              label={metaSignatureValidation ? "Enabled" : "Disabled"}
+              status={metaSignatureValidation ? "PASS" : "WARNING"}
+            />
+          </div>
+          <div className="profile-row">
+            <span>Verify token</span>
+            <span>{process.env.META_WEBHOOK_VERIFY_TOKEN ? "Configured" : "Missing"}</span>
+          </div>
+          <div className={metaConfigured ? "alert success-alert" : "alert"}>
+            {metaConfigured
+              ? "META_WHATSAPP_ACCESS_TOKEN, META_PHONE_NUMBER_ID, and META_WABA_ID are configured."
+              : "Set Meta env vars before disabling META_WHATSAPP_DRY_RUN."}
           </div>
         </div>
       </section>

@@ -12,7 +12,13 @@ import {
   ReplyStatus,
   SendJobStatus,
   SendingAccountStatus,
-  SuppressionReason
+  SuppressionReason,
+  WhatsappCampaignStatus,
+  WhatsappLeadStatus,
+  WhatsappMessageStatus,
+  WhatsappRecipientStatus,
+  WhatsappTemplateCategory,
+  WhatsappTemplateStatus
 } from "@prisma/client";
 
 export const leadStatusLabels: Record<LeadStatus, string> = {
@@ -152,6 +158,64 @@ export const dealStatusLabels: Record<DealStatus, string> = {
   PAUSED: "Paused"
 };
 
+export const whatsappLeadStatusLabels: Record<WhatsappLeadStatus, string> = {
+  UNKNOWN: "Unknown",
+  OPTED_IN: "Opted in",
+  STOPPED: "Stopped",
+  INVALID: "Invalid"
+};
+
+export const whatsappTemplateStatusLabels: Record<WhatsappTemplateStatus, string> = {
+  APPROVED: "Approved",
+  PENDING: "Pending",
+  REJECTED: "Rejected",
+  PAUSED: "Paused",
+  DISABLED: "Disabled"
+};
+
+export const whatsappTemplateCategoryLabels: Record<WhatsappTemplateCategory, string> = {
+  MARKETING: "Marketing",
+  UTILITY: "Utility",
+  AUTHENTICATION: "Authentication",
+  SERVICE: "Service",
+  UNKNOWN: "Unknown"
+};
+
+export const whatsappCampaignStatusLabels: Record<WhatsappCampaignStatus, string> = {
+  DRAFT: "Draft",
+  REVIEW_BLOCKED: "Review blocked",
+  REVIEW_READY: "Ready to approve",
+  APPROVED: "Approved",
+  SCHEDULED: "Scheduled",
+  SENDING: "Sending",
+  PAUSED: "Paused",
+  COMPLETED: "Completed",
+  ARCHIVED: "Archived"
+};
+
+export const whatsappRecipientStatusLabels: Record<WhatsappRecipientStatus, string> = {
+  READY: "Ready",
+  QUEUED: "Queued",
+  SENT: "Sent",
+  DELIVERED: "Delivered",
+  READ: "Read",
+  REPLIED: "Replied",
+  SKIPPED: "Skipped",
+  FAILED: "Failed",
+  EXCLUDED: "Excluded"
+};
+
+export const whatsappMessageStatusLabels: Record<WhatsappMessageStatus, string> = {
+  QUEUED: "Queued",
+  SENDING: "Sending",
+  SENT: "Sent",
+  DELIVERED: "Delivered",
+  READ: "Read",
+  FAILED: "Failed",
+  SKIPPED: "Skipped",
+  REPLIED: "Replied"
+};
+
 export function statusTone(
   status:
     | AiReplyDraftStatus
@@ -168,6 +232,11 @@ export function statusTone(
     | ReplyStatus
     | DealStage
     | DealStatus
+    | WhatsappCampaignStatus
+    | WhatsappLeadStatus
+    | WhatsappMessageStatus
+    | WhatsappRecipientStatus
+    | WhatsappTemplateStatus
 ) {
   if (
     [
@@ -193,7 +262,10 @@ export function statusTone(
       "AUTO_REPLIED",
       "OWNER_HANDLING",
       "PROPOSAL_SENT",
-      "OPEN"
+      "OPEN",
+      "OPTED_IN",
+      "DELIVERED",
+      "READ"
     ].includes(status)
   ) {
     return "success";
@@ -220,7 +292,10 @@ export function statusTone(
       "REPLIED",
       "ENGAGED",
       "FOLLOW_UP_LATER",
-      "PAUSED"
+      "PAUSED",
+      "UNKNOWN",
+      "PENDING",
+      "READY"
     ].includes(status)
   )
     return "warning";
@@ -248,7 +323,12 @@ export function statusTone(
       "NOT_INTERESTED",
       "NEGATIVE",
       "SUPPRESSED",
-      "LOST"
+      "LOST",
+      "STOPPED",
+      "INVALID",
+      "REJECTED",
+      "DISABLED",
+      "EXCLUDED"
     ].includes(status)
   ) {
     return "danger";

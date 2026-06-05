@@ -186,6 +186,85 @@ enum DealStatus {
   PAUSED
 }
 
+enum MessageChannel {
+  EMAIL
+  WHATSAPP
+}
+
+enum WhatsappLeadStatus {
+  UNKNOWN
+  OPTED_IN
+  STOPPED
+  INVALID
+}
+
+enum WhatsappTemplateStatus {
+  APPROVED
+  PENDING
+  REJECTED
+  PAUSED
+  DISABLED
+}
+
+enum WhatsappTemplateCategory {
+  MARKETING
+  UTILITY
+  AUTHENTICATION
+  SERVICE
+  UNKNOWN
+}
+
+enum WhatsappCampaignStatus {
+  DRAFT
+  REVIEW_BLOCKED
+  REVIEW_READY
+  APPROVED
+  SCHEDULED
+  SENDING
+  PAUSED
+  COMPLETED
+  ARCHIVED
+}
+
+enum WhatsappRecipientStatus {
+  READY
+  QUEUED
+  SENT
+  DELIVERED
+  READ
+  REPLIED
+  SKIPPED
+  FAILED
+  EXCLUDED
+}
+
+enum WhatsappMessageStatus {
+  QUEUED
+  SENDING
+  SENT
+  DELIVERED
+  READ
+  FAILED
+  SKIPPED
+  REPLIED
+}
+
+enum WhatsappEventType {
+  QUEUED
+  SENT
+  DELIVERED
+  READ
+  FAILED
+  SKIPPED
+  REPLY_RECEIVED
+  AI_REPLY_DRAFTED
+  AI_REPLY_SENT
+  HOT_HANDOFF
+  OPTED_OUT
+  TEST_SENT
+  RATE_LIMITED
+}
+
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
@@ -207,63 +286,80 @@ model Setting {
 }
 
 model Offer {
-  id               String         @id @default(cuid())
-  name             String         @unique
-  targetAudience   String         @map("target_audience")
-  painPoints       String[]       @default([]) @map("pain_points")
-  valueProposition String         @map("value_proposition")
-  proofPoints      String[]       @default([]) @map("proof_points")
-  servicesIncluded String[]       @default([]) @map("services_included")
-  ctaStyle         String         @map("cta_style")
-  disallowedClaims String[]       @default([]) @map("disallowed_claims")
-  aiVoiceRules     String         @map("ai_voice_rules")
-  active           Boolean        @default(true)
-  createdAt        DateTime       @default(now()) @map("created_at")
-  updatedAt        DateTime       @updatedAt @map("updated_at")
-  campaigns        Campaign[]
-  aiReplyDrafts    AiReplyDraft[]
-  deals            Deal[]
+  id                String             @id @default(cuid())
+  name              String             @unique
+  targetAudience    String             @map("target_audience")
+  painPoints        String[]           @default([]) @map("pain_points")
+  valueProposition  String             @map("value_proposition")
+  proofPoints       String[]           @default([]) @map("proof_points")
+  servicesIncluded  String[]           @default([]) @map("services_included")
+  ctaStyle          String             @map("cta_style")
+  disallowedClaims  String[]           @default([]) @map("disallowed_claims")
+  aiVoiceRules      String             @map("ai_voice_rules")
+  active            Boolean            @default(true)
+  createdAt         DateTime           @default(now()) @map("created_at")
+  updatedAt         DateTime           @updatedAt @map("updated_at")
+  campaigns         Campaign[]
+  whatsappCampaigns WhatsappCampaign[]
+  aiReplyDrafts     AiReplyDraft[]
+  deals             Deal[]
 
   @@index([active])
   @@map("offers")
 }
 
 model Lead {
-  id                 String              @id @default(cuid())
-  email              String              @unique
-  firstName          String?             @map("first_name")
-  lastName           String?             @map("last_name")
-  company            String?
-  website            String?
-  role               String?
-  industry           String?
-  country            String?
-  timezone           String?
-  source             String?
-  sourceUrl          String?             @map("source_url")
-  legalBasis         String?             @map("legal_basis")
-  consentNotes       String?             @map("consent_notes")
-  ownerNotes         String?             @map("owner_notes")
-  status             LeadStatus          @default(NEW)
-  scoreFit           Int                 @default(0) @map("score_fit")
-  scoreEngagement    Int                 @default(0) @map("score_engagement")
-  scoreIntent        Int                 @default(0) @map("score_intent")
-  lastContactedAt    DateTime?           @map("last_contacted_at")
-  nextActionAt       DateTime?           @map("next_action_at")
-  createdAt          DateTime            @default(now()) @map("created_at")
-  updatedAt          DateTime            @updatedAt @map("updated_at")
-  tags               LeadTag[]
-  importRows         ImportRow[]
-  events             LeadEvent[]
-  campaignRecipients CampaignRecipient[]
-  emailMessages      EmailMessage[]
-  emailEvents        EmailEvent[]
-  unsubscribeTokens  UnsubscribeToken[]
-  inboundReplies     InboundReply[]
-  aiReplyDrafts      AiReplyDraft[]
-  deals              Deal[]
+  id                             String                      @id @default(cuid())
+  email                          String                      @unique
+  phoneE164                      String?                     @unique @map("phone_e164")
+  firstName                      String?                     @map("first_name")
+  lastName                       String?                     @map("last_name")
+  company                        String?
+  website                        String?
+  role                           String?
+  industry                       String?
+  country                        String?
+  timezone                       String?
+  source                         String?
+  sourceUrl                      String?                     @map("source_url")
+  legalBasis                     String?                     @map("legal_basis")
+  consentNotes                   String?                     @map("consent_notes")
+  whatsappOptIn                  Boolean                     @default(false) @map("whatsapp_opt_in")
+  whatsappConsentSource          String?                     @map("whatsapp_consent_source")
+  whatsappStatus                 WhatsappLeadStatus          @default(UNKNOWN) @map("whatsapp_status")
+  lastWhatsappContactedAt        DateTime?                   @map("last_whatsapp_contacted_at")
+  lastWhatsappCustomerMessageAt  DateTime?                   @map("last_whatsapp_customer_message_at")
+  whatsappServiceWindowExpiresAt DateTime?                   @map("whatsapp_service_window_expires_at")
+  whatsappBotPaused              Boolean                     @default(false) @map("whatsapp_bot_paused")
+  whatsappHandoffReason          String?                     @map("whatsapp_handoff_reason")
+  whatsappStoppedAt              DateTime?                   @map("whatsapp_stopped_at")
+  ownerNotes                     String?                     @map("owner_notes")
+  status                         LeadStatus                  @default(NEW)
+  scoreFit                       Int                         @default(0) @map("score_fit")
+  scoreEngagement                Int                         @default(0) @map("score_engagement")
+  scoreIntent                    Int                         @default(0) @map("score_intent")
+  lastContactedAt                DateTime?                   @map("last_contacted_at")
+  nextActionAt                   DateTime?                   @map("next_action_at")
+  createdAt                      DateTime                    @default(now()) @map("created_at")
+  updatedAt                      DateTime                    @updatedAt @map("updated_at")
+  tags                           LeadTag[]
+  importRows                     ImportRow[]
+  events                         LeadEvent[]
+  campaignRecipients             CampaignRecipient[]
+  emailMessages                  EmailMessage[]
+  emailEvents                    EmailEvent[]
+  unsubscribeTokens              UnsubscribeToken[]
+  inboundReplies                 InboundReply[]
+  aiReplyDrafts                  AiReplyDraft[]
+  deals                          Deal[]
+  whatsappCampaignRecipients     WhatsappCampaignRecipient[]
+  whatsappMessages               WhatsappMessage[]
+  whatsappEvents                 WhatsappEvent[]
 
   @@index([status])
+  @@index([phoneE164])
+  @@index([whatsappStatus])
+  @@index([whatsappOptIn])
   @@index([company])
   @@index([source])
   @@index([country])
@@ -305,6 +401,7 @@ model ImportRow {
   rowNumber Int             @map("row_number")
   raw       Json
   email     String?
+  phoneE164 String?         @map("phone_e164")
   status    ImportRowStatus
   issues    String[]        @default([])
   leadId    String?         @map("lead_id")
@@ -313,6 +410,7 @@ model ImportRow {
   lead      Lead?           @relation(fields: [leadId], references: [id], onDelete: SetNull)
 
   @@index([batchId])
+  @@index([phoneE164])
   @@index([status])
   @@map("import_rows")
 }
@@ -628,38 +726,45 @@ model UnsubscribeToken {
 }
 
 model InboundReply {
-  id                  String         @id @default(cuid())
-  leadId              String?        @map("lead_id")
-  campaignId          String?        @map("campaign_id")
-  emailMessageId      String?        @map("email_message_id")
-  fromEmail           String         @map("from_email")
-  toEmail             String?        @map("to_email")
+  id                  String           @id @default(cuid())
+  channel             MessageChannel   @default(EMAIL)
+  leadId              String?          @map("lead_id")
+  campaignId          String?          @map("campaign_id")
+  emailMessageId      String?          @map("email_message_id")
+  whatsappMessageId   String?          @map("whatsapp_message_id")
+  fromEmail           String?          @map("from_email")
+  toEmail             String?          @map("to_email")
+  fromPhoneE164       String?          @map("from_phone_e164")
+  toPhoneE164         String?          @map("to_phone_e164")
   subject             String
-  bodyText            String         @map("body_text")
-  source              String         @default("manual")
-  providerMessageId   String?        @unique @map("provider_message_id")
-  messageIdHeader     String?        @map("message_id_header")
-  inReplyTo           String?        @map("in_reply_to")
+  bodyText            String           @map("body_text")
+  source              String           @default("manual")
+  providerMessageId   String?          @unique @map("provider_message_id")
+  messageIdHeader     String?          @map("message_id_header")
+  inReplyTo           String?          @map("in_reply_to")
   raw                 Json?
-  status              ReplyStatus    @default(NEW)
-  intent              ReplyIntent    @default(UNCLEAR)
-  sentiment           ReplySentiment @default(NEUTRAL)
-  aiConfidence        Int            @default(0) @map("ai_confidence")
-  aiSummary           String?        @map("ai_summary")
-  aiSuggestedAction   String?        @map("ai_suggested_action")
-  ownerActionRequired Boolean        @default(true) @map("owner_action_required")
-  autoReplyEligible   Boolean        @default(false) @map("auto_reply_eligible")
-  riskFlags           String[]       @default([]) @map("risk_flags")
-  receivedAt          DateTime       @default(now()) @map("received_at")
-  createdAt           DateTime       @default(now()) @map("created_at")
-  updatedAt           DateTime       @updatedAt @map("updated_at")
-  lead                Lead?          @relation(fields: [leadId], references: [id], onDelete: SetNull)
-  campaign            Campaign?      @relation(fields: [campaignId], references: [id], onDelete: SetNull)
-  emailMessage        EmailMessage?  @relation(fields: [emailMessageId], references: [id], onDelete: SetNull)
+  status              ReplyStatus      @default(NEW)
+  intent              ReplyIntent      @default(UNCLEAR)
+  sentiment           ReplySentiment   @default(NEUTRAL)
+  aiConfidence        Int              @default(0) @map("ai_confidence")
+  aiSummary           String?          @map("ai_summary")
+  aiSuggestedAction   String?          @map("ai_suggested_action")
+  ownerActionRequired Boolean          @default(true) @map("owner_action_required")
+  autoReplyEligible   Boolean          @default(false) @map("auto_reply_eligible")
+  riskFlags           String[]         @default([]) @map("risk_flags")
+  receivedAt          DateTime         @default(now()) @map("received_at")
+  createdAt           DateTime         @default(now()) @map("created_at")
+  updatedAt           DateTime         @updatedAt @map("updated_at")
+  lead                Lead?            @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  campaign            Campaign?        @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  emailMessage        EmailMessage?    @relation(fields: [emailMessageId], references: [id], onDelete: SetNull)
+  whatsappMessage     WhatsappMessage? @relation(fields: [whatsappMessageId], references: [id], onDelete: SetNull)
   drafts              AiReplyDraft[]
 
   @@index([leadId])
+  @@index([channel])
   @@index([campaignId])
+  @@index([whatsappMessageId])
   @@index([intent])
   @@index([status])
   @@index([receivedAt])
@@ -668,6 +773,7 @@ model InboundReply {
 
 model AiReplyDraft {
   id                String             @id @default(cuid())
+  channel           MessageChannel     @default(EMAIL)
   replyId           String             @map("reply_id")
   leadId            String?            @map("lead_id")
   campaignId        String?            @map("campaign_id")
@@ -695,6 +801,160 @@ model AiReplyDraft {
   @@index([campaignId])
   @@index([status])
   @@map("ai_reply_drafts")
+}
+
+model WhatsappTemplate {
+  id               String                   @id @default(cuid())
+  name             String
+  metaTemplateName String                   @unique @map("meta_template_name")
+  metaTemplateId   String?                  @map("meta_template_id")
+  language         String                   @default("en")
+  category         WhatsappTemplateCategory @default(MARKETING)
+  status           WhatsappTemplateStatus   @default(APPROVED)
+  variables        String[]                 @default([])
+  bodyPreview      String?                  @map("body_preview")
+  exampleVariables Json?                    @map("example_variables")
+  active           Boolean                  @default(true)
+  createdAt        DateTime                 @default(now()) @map("created_at")
+  updatedAt        DateTime                 @updatedAt @map("updated_at")
+  campaigns        WhatsappCampaign[]
+  messages         WhatsappMessage[]
+
+  @@index([status])
+  @@index([active])
+  @@map("whatsapp_templates")
+}
+
+model WhatsappCampaign {
+  id                  String                      @id @default(cuid())
+  name                String
+  status              WhatsappCampaignStatus      @default(DRAFT)
+  offerId             String                      @map("offer_id")
+  templateId          String                      @map("template_id")
+  audienceFilter      Json                        @map("audience_filter")
+  variableMapping     Json                        @map("variable_mapping")
+  estimatedRecipients Int                         @default(0) @map("estimated_recipients")
+  dailyCap            Int                         @default(25) @map("daily_cap")
+  sendWindowStart     String?                     @map("send_window_start")
+  sendWindowEnd       String?                     @map("send_window_end")
+  approvedAt          DateTime?                   @map("approved_at")
+  createdAt           DateTime                    @default(now()) @map("created_at")
+  updatedAt           DateTime                    @updatedAt @map("updated_at")
+  offer               Offer                       @relation(fields: [offerId], references: [id], onDelete: Restrict)
+  template            WhatsappTemplate            @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  recipients          WhatsappCampaignRecipient[]
+  sendJobs            WhatsappSendJob[]
+  messages            WhatsappMessage[]
+  events              WhatsappEvent[]
+
+  @@index([status])
+  @@index([offerId])
+  @@index([templateId])
+  @@map("whatsapp_campaigns")
+}
+
+model WhatsappCampaignRecipient {
+  id         String                  @id @default(cuid())
+  campaignId String                  @map("campaign_id")
+  leadId     String                  @map("lead_id")
+  status     WhatsappRecipientStatus @default(READY)
+  reason     String?
+  createdAt  DateTime                @default(now()) @map("created_at")
+  updatedAt  DateTime                @updatedAt @map("updated_at")
+  campaign   WhatsappCampaign        @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  lead       Lead                    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  messages   WhatsappMessage[]
+
+  @@unique([campaignId, leadId])
+  @@index([status])
+  @@map("whatsapp_campaign_recipients")
+}
+
+model WhatsappSendJob {
+  id                String            @id @default(cuid())
+  campaignId        String            @map("campaign_id")
+  status            SendJobStatus     @default(QUEUED)
+  scheduledAt       DateTime          @default(now()) @map("scheduled_at")
+  startedAt         DateTime?         @map("started_at")
+  completedAt       DateTime?         @map("completed_at")
+  pausedAt          DateTime?         @map("paused_at")
+  lastError         String?           @map("last_error")
+  totalRecipients   Int               @default(0) @map("total_recipients")
+  queuedMessages    Int               @default(0) @map("queued_messages")
+  sentMessages      Int               @default(0) @map("sent_messages")
+  deliveredMessages Int               @default(0) @map("delivered_messages")
+  readMessages      Int               @default(0) @map("read_messages")
+  skippedMessages   Int               @default(0) @map("skipped_messages")
+  failedMessages    Int               @default(0) @map("failed_messages")
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
+  campaign          WhatsappCampaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  messages          WhatsappMessage[]
+
+  @@index([campaignId])
+  @@index([status])
+  @@map("whatsapp_send_jobs")
+}
+
+model WhatsappMessage {
+  id                  String                     @id @default(cuid())
+  sendJobId           String?                    @map("send_job_id")
+  campaignId          String?                    @map("campaign_id")
+  campaignRecipientId String?                    @map("campaign_recipient_id")
+  leadId              String                     @map("lead_id")
+  templateId          String?                    @map("template_id")
+  status              WhatsappMessageStatus      @default(QUEUED)
+  direction           String                     @default("outbound")
+  toPhoneE164         String?                    @map("to_phone_e164")
+  fromPhoneE164       String?                    @map("from_phone_e164")
+  contentVariables    Json?                      @map("content_variables")
+  bodyText            String?                    @map("body_text")
+  providerMessageId   String?                    @unique @map("provider_message_id")
+  error               String?
+  queuedAt            DateTime                   @default(now()) @map("queued_at")
+  startedAt           DateTime?                  @map("started_at")
+  sentAt              DateTime?                  @map("sent_at")
+  deliveredAt         DateTime?                  @map("delivered_at")
+  readAt              DateTime?                  @map("read_at")
+  failedAt            DateTime?                  @map("failed_at")
+  skippedAt           DateTime?                  @map("skipped_at")
+  createdAt           DateTime                   @default(now()) @map("created_at")
+  updatedAt           DateTime                   @updatedAt @map("updated_at")
+  sendJob             WhatsappSendJob?           @relation(fields: [sendJobId], references: [id], onDelete: Cascade)
+  campaign            WhatsappCampaign?          @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaignRecipient   WhatsappCampaignRecipient? @relation(fields: [campaignRecipientId], references: [id], onDelete: SetNull)
+  lead                Lead                       @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  template            WhatsappTemplate?          @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  events              WhatsappEvent[]
+  inboundReplies      InboundReply[]
+
+  @@index([sendJobId])
+  @@index([campaignId])
+  @@index([leadId])
+  @@index([status])
+  @@index([queuedAt])
+  @@index([toPhoneE164])
+  @@index([fromPhoneE164])
+  @@map("whatsapp_messages")
+}
+
+model WhatsappEvent {
+  id         String            @id @default(cuid())
+  type       WhatsappEventType
+  messageId  String?           @map("message_id")
+  campaignId String?           @map("campaign_id")
+  leadId     String?           @map("lead_id")
+  metadata   Json?
+  createdAt  DateTime          @default(now()) @map("created_at")
+  message    WhatsappMessage?  @relation(fields: [messageId], references: [id], onDelete: SetNull)
+  campaign   WhatsappCampaign? @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  lead       Lead?             @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  @@index([type])
+  @@index([messageId])
+  @@index([campaignId])
+  @@index([leadId])
+  @@map("whatsapp_events")
 }
 
 model Deal {

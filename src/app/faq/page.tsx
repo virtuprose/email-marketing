@@ -189,6 +189,80 @@ const faqSections: FaqSection[] = [
     ]
   },
   {
+    title: "WhatsApp Template Campaigns",
+    description: "How Meta WhatsApp templates, consent, replies, and AI handoff work.",
+    items: [
+      {
+        question: "What is the WhatsApp MVP for?",
+        defaultOpen: true,
+        answer: (
+          <p>
+            The WhatsApp MVP lets you send <strong>approved Meta WhatsApp templates</strong> to clients who
+            have a phone number and recorded WhatsApp opt-in, then routes replies into the AI inbox for
+            qualification and owner handoff.
+          </p>
+        )
+      },
+      {
+        question: "What CSV fields do WhatsApp leads need?",
+        answer: (
+          <ul className="faq-list">
+            <li>
+              <strong>phone</strong> - must normalize to E.164 format, such as <code>+965...</code>.
+            </li>
+            <li>
+              <strong>whatsapp_opt_in</strong> - use yes/true/1 for leads allowed to receive WhatsApp.
+            </li>
+            <li>
+              <strong>whatsapp_consent_source</strong> - where that permission came from.
+            </li>
+          </ul>
+        )
+      },
+      {
+        question: "Can WhatsApp send cold messages to any phone number?",
+        answer: (
+          <p>
+            No. The platform blocks WhatsApp campaigns unless opt-in is recorded. Business-initiated WhatsApp
+            outreach must use approved templates and should not be used for random cold blasting.
+          </p>
+        )
+      },
+      {
+        question: "How do Meta templates work here?",
+        answer: (
+          <p>
+            Add the template in <strong>WhatsApp &gt; Templates</strong> with its Meta template name,
+            language, category, variables, and body text. Submit it to Meta for approval or sync an existing
+            approved template. Campaigns can send only active approved templates.
+          </p>
+        )
+      },
+      {
+        question: "When can AI reply on WhatsApp?",
+        answer: (
+          <p>
+            AI can send a free-form WhatsApp reply only inside the{" "}
+            <strong>24-hour customer service window</strong> after the lead replies, and only when the
+            classification is safe. Hot, pricing, meeting, complaint, opt-out, and low-confidence replies are
+            handed to you instead.
+          </p>
+        )
+      },
+      {
+        question: "Which Meta webhook do I need?",
+        answer: (
+          <ul className="faq-list">
+            <li>
+              <code>/api/webhooks/meta/whatsapp</code> verifies the Meta webhook challenge.
+            </li>
+            <li>The same endpoint receives messages and sent, delivered, read, and failed statuses.</li>
+          </ul>
+        )
+      }
+    ]
+  },
+  {
     title: "AI Inbox And Replies",
     description: "How replies become AI-classified tasks, drafts, and hot handoffs.",
     items: [

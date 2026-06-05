@@ -6,12 +6,16 @@ import {
   EmailMessageStatus,
   LeadEventType,
   LeadStatus,
+  MessageChannel,
   Prisma,
   ReplyIntent,
   ReplySentiment,
   ReplyStatus,
   SendingAccountStatus,
   SuppressionReason,
+  WhatsappEventType,
+  WhatsappLeadStatus,
+  WhatsappMessageStatus,
   type InboundReply,
   type Lead,
   type Offer
@@ -20,6 +24,7 @@ import { z } from "zod";
 import { isValidEmail, normalizeEmail } from "./imports";
 import { prisma } from "./prisma";
 import { refreshSendJobProgress, sendDirectEmail } from "./sending";
+import { sendMetaTextMessage } from "./whatsapp";
 
 export const REPLY_POLICY_VERSION = "reply-policy-v1";
 
@@ -32,6 +37,18 @@ export type InboundReplyInput = {
   providerMessageId?: string | null;
   messageIdHeader?: string | null;
   inReplyTo?: string | null;
+  raw?: Prisma.InputJsonValue;
+};
+
+export type WhatsappInboundReplyInput = {
+  leadId: string;
+  whatsappMessageId: string;
+  fromPhoneE164: string;
+  toPhoneE164?: string | null;
+  subject: string;
+  bodyText: string;
+  source?: string;
+  providerMessageId?: string | null;
   raw?: Prisma.InputJsonValue;
 };
 
@@ -441,6 +458,7 @@ export async function ingestInboundReply(input: InboundReplyInput) {
   const reply = await prisma.inboundReply.create({
     data: {
       leadId: lead.id,
+      channel: MessageChannel.EMAIL,
       campaignId: message?.campaignId ?? null,
       emailMessageId: message?.id ?? null,
       fromEmail,
@@ -475,20 +493,63 @@ export async function ingestInboundReply(input: InboundReplyInput) {
   };
 }
 
+export async function ingestWhatsappInboundReply(input: WhatsappInboundReplyInput) {
+  if (!input.bodyText.trim()) {
+    throw new Error("Inbound WhatsApp reply body cannot be empty.");
+  }
+
+  if (input.providerMessageId) {
+    const existing = await prisma.inboundReply.findUnique({
+      where: { providerMessageId: input.providerMessageId },
+      include: { lead: true, drafts: { orderBy: { createdAt: "desc" }, take: 1 } }
+    });
+    if (existing) return { reply: existing, duplicate: true };
+  }
+
+  const lead = await prisma.lead.findUnique({ where: { id: input.leadId } });
+  if (!lead) throw new Error("Inbound WhatsApp reply must be linked to a lead.");
+
+  const message = await prisma.whatsappMessage.findUnique({
+    where: { id: input.whatsappMessageId },
+    include: { campaign: { include: { offer: true } } }
+  });
+
+  const reply = await prisma.inboundReply.create({
+    data: {
+      leadId: lead.id,
+      channel: MessageChannel.WHATSAPP,
+      whatsappMessageId: input.whatsappMessageId,
+      fromPhoneE164: input.fromPhoneE164,
+      toPhoneE164: input.toPhoneE164 || null,
+      subject: input.subject.trim() || "WhatsApp reply",
+      bodyText: input.bodyText.trim(),
+      source: input.source || "meta_whatsapp",
+      providerMessageId: input.providerMessageId || null,
+      ...(input.raw ? { raw: input.raw } : {})
+    }
+  });
+
+  return {
+    reply: await processInboundReply(reply.id, message?.campaign?.offer ?? null),
+    duplicate: false
+  };
+}
+
 export async function processInboundReply(replyId: string, knownOffer?: Offer | null) {
   const reply = await prisma.inboundReply.findUnique({
     where: { id: replyId },
     include: {
       lead: true,
       campaign: { include: { offer: true } },
-      emailMessage: true
+      emailMessage: true,
+      whatsappMessage: { include: { campaign: { include: { offer: true } } } }
     }
   });
   if (!reply) throw new Error("Inbound reply not found.");
   if (!reply.lead) throw new Error("Inbound reply is not linked to a lead.");
 
   const lead = reply.lead;
-  const offer = knownOffer ?? reply.campaign?.offer ?? null;
+  const offer = knownOffer ?? reply.campaign?.offer ?? reply.whatsappMessage?.campaign?.offer ?? null;
   const analysis = await analyzeReplyWithAiFallback(reply, offer);
   const shouldSuppress =
     analysis.intent === ReplyIntent.UNSUBSCRIBE || analysis.intent === ReplyIntent.COMPLAINT;
@@ -499,6 +560,7 @@ export async function processInboundReply(replyId: string, knownOffer?: Offer | 
     analysis
   });
   const stopped = await stopQueuedFollowUpsForLead(lead.id, reply.campaignId);
+  const stoppedWhatsapp = await stopQueuedWhatsappMessagesForLead(lead.id, reply.whatsappMessage?.campaignId);
   const nextActionAt = nextActionForAnalysis(analysis);
   const status = replyStatusForAnalysis(analysis);
   const fitScore = scoreFit(lead);
@@ -538,7 +600,8 @@ export async function processInboundReply(replyId: string, knownOffer?: Offer | 
         metadata: {
           replyId: reply.id,
           confidence: analysis.confidence,
-          stoppedQueuedFollowUps: stopped.skipped
+          stoppedQueuedFollowUps: stopped.skipped,
+          stoppedQueuedWhatsappMessages: stoppedWhatsapp.skipped
         }
       }
     });
@@ -569,6 +632,7 @@ export async function processInboundReply(replyId: string, knownOffer?: Offer | 
     await tx.aiReplyDraft.create({
       data: {
         replyId: reply.id,
+        channel: reply.channel,
         leadId: lead.id,
         campaignId: reply.campaignId,
         offerId: offer?.id ?? null,
@@ -634,7 +698,8 @@ export async function processInboundReply(replyId: string, knownOffer?: Offer | 
           leadId: lead.id,
           intent: analysis.intent,
           confidence: analysis.confidence,
-          stoppedQueuedFollowUps: stopped.skipped
+          stoppedQueuedFollowUps: stopped.skipped,
+          stoppedQueuedWhatsappMessages: stoppedWhatsapp.skipped
         }
       }
     });
@@ -642,6 +707,22 @@ export async function processInboundReply(replyId: string, knownOffer?: Offer | 
 
   for (const sendJobId of stopped.sendJobIds) {
     await refreshSendJobProgress(sendJobId);
+  }
+
+  if (
+    reply.channel === MessageChannel.WHATSAPP &&
+    analysis.autoReplyEligible &&
+    analysis.riskFlags.length === 0 &&
+    !shouldSuppress &&
+    isWithinWhatsappServiceWindow(reply.lead?.whatsappServiceWindowExpiresAt, reply.receivedAt)
+  ) {
+    const latestDraft = await prisma.aiReplyDraft.findFirst({
+      where: { replyId: reply.id, status: AiReplyDraftStatus.DRAFT },
+      orderBy: { createdAt: "desc" }
+    });
+    if (latestDraft) {
+      await sendAiReplyDraft(latestDraft.id);
+    }
   }
 
   const processed = await prisma.inboundReply.findUnique({
@@ -678,6 +759,10 @@ export async function sendAiReplyDraft(draftId: string, sendingAccountId?: strin
       }
     });
     throw new Error("Lead is suppressed or do-not-contact.");
+  }
+
+  if (draft.channel === MessageChannel.WHATSAPP) {
+    return sendWhatsappAiReplyDraft(draft.id);
   }
 
   const account = sendingAccountId
@@ -742,6 +827,89 @@ export async function sendAiReplyDraft(draftId: string, sendingAccountId?: strin
           replyId: draft.replyId,
           leadId: draft.leadId,
           dryRun: result.dryRun
+        }
+      }
+    });
+    return updated;
+  });
+
+  return sent;
+}
+
+async function sendWhatsappAiReplyDraft(draftId: string) {
+  const draft = await prisma.aiReplyDraft.findUnique({
+    where: { id: draftId },
+    include: { reply: true, lead: true }
+  });
+  if (!draft || !draft.lead) throw new Error("WhatsApp AI reply draft not found.");
+  if (!draft.lead.phoneE164 || draft.reply.channel !== MessageChannel.WHATSAPP) {
+    throw new Error("This draft is not linked to a WhatsApp conversation.");
+  }
+  if (!isWithinWhatsappServiceWindow(draft.lead.whatsappServiceWindowExpiresAt, draft.reply.receivedAt)) {
+    await prisma.aiReplyDraft.update({
+      where: { id: draft.id },
+      data: {
+        status: AiReplyDraftStatus.BLOCKED,
+        riskFlags: [...draft.riskFlags, "Outside WhatsApp 24-hour customer service window."]
+      }
+    });
+    throw new Error("Outside WhatsApp 24-hour customer service window.");
+  }
+  if (draft.lead.whatsappStatus === WhatsappLeadStatus.STOPPED || draft.lead.whatsappStoppedAt) {
+    throw new Error("Lead opted out of WhatsApp messages.");
+  }
+
+  const result = await sendMetaTextMessage({
+    toPhoneE164: draft.lead.phoneE164,
+    body: draft.bodyText
+  });
+
+  const sent = await prisma.$transaction(async (tx) => {
+    const message = await tx.whatsappMessage.create({
+      data: {
+        leadId: draft.lead!.id,
+        status: WhatsappMessageStatus.SENT,
+        direction: "outbound_ai",
+        toPhoneE164: draft.lead!.phoneE164,
+        bodyText: draft.bodyText,
+        providerMessageId: result.providerMessageId,
+        sentAt: new Date()
+      }
+    });
+    const updated = await tx.aiReplyDraft.update({
+      where: { id: draft.id },
+      data: {
+        status: AiReplyDraftStatus.SENT,
+        sentAt: new Date(),
+        providerMessageId: result.providerMessageId
+      }
+    });
+    await tx.inboundReply.update({
+      where: { id: draft.replyId },
+      data: { status: ReplyStatus.AUTO_REPLIED }
+    });
+    await tx.whatsappEvent.create({
+      data: {
+        type: WhatsappEventType.AI_REPLY_SENT,
+        messageId: message.id,
+        leadId: draft.leadId,
+        metadata: {
+          draftId: draft.id,
+          replyId: draft.replyId,
+          providerMessageId: result.providerMessageId,
+          dryRun: result.dryRun
+        }
+      }
+    });
+    await tx.leadEvent.create({
+      data: {
+        leadId: draft.lead!.id,
+        type: LeadEventType.NOTE_UPDATED,
+        message: result.dryRun ? "WhatsApp AI reply dry-run recorded." : "WhatsApp AI reply sent.",
+        metadata: {
+          replyId: draft.replyId,
+          draftId: draft.id,
+          providerMessageId: result.providerMessageId
         }
       }
     });
@@ -1105,6 +1273,50 @@ async function stopQueuedFollowUpsForLead(leadId: string, campaignId?: string | 
     skipped: queuedMessages.length,
     sendJobIds: Array.from(new Set(queuedMessages.map((message) => message.sendJobId)))
   };
+}
+
+async function stopQueuedWhatsappMessagesForLead(leadId: string, campaignId?: string | null) {
+  const queuedMessages = await prisma.whatsappMessage.findMany({
+    where: {
+      leadId,
+      campaignId: campaignId ?? undefined,
+      status: WhatsappMessageStatus.QUEUED
+    },
+    select: { id: true, sendJobId: true, campaignId: true, leadId: true }
+  });
+
+  if (!queuedMessages.length) return { skipped: 0, sendJobIds: [] as string[] };
+
+  await prisma.whatsappMessage.updateMany({
+    where: { id: { in: queuedMessages.map((message) => message.id) } },
+    data: {
+      status: WhatsappMessageStatus.SKIPPED,
+      skippedAt: new Date(),
+      error: "Lead replied; AI inbox is handling the WhatsApp conversation."
+    }
+  });
+
+  await prisma.whatsappEvent.createMany({
+    data: queuedMessages.map((message) => ({
+      type: WhatsappEventType.SKIPPED,
+      messageId: message.id,
+      campaignId: message.campaignId,
+      leadId: message.leadId,
+      metadata: { reason: "lead_replied" }
+    }))
+  });
+
+  return {
+    skipped: queuedMessages.length,
+    sendJobIds: Array.from(
+      new Set(queuedMessages.map((message) => message.sendJobId).filter(Boolean))
+    ) as string[]
+  };
+}
+
+function isWithinWhatsappServiceWindow(serviceWindowExpiresAt: Date | null | undefined, receivedAt: Date) {
+  if (serviceWindowExpiresAt) return serviceWindowExpiresAt.getTime() > Date.now();
+  return Date.now() - receivedAt.getTime() <= 24 * 60 * 60 * 1000;
 }
 
 function replyStatusForAnalysis(analysis: ReplyAnalysis) {

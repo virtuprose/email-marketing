@@ -1,12 +1,13 @@
-import { LeadStatus } from "@prisma/client";
+import { LeadStatus, WhatsappLeadStatus } from "@prisma/client";
 import { updateLeadStatus } from "@/app/actions";
 import { formatDate } from "@/lib/format";
-import { leadStatusLabels } from "@/lib/status";
+import { leadStatusLabels, whatsappLeadStatusLabels } from "@/lib/status";
 import { StatusBadge } from "./status-badge";
 
 type LeadWithRelations = {
   id: string;
   email: string;
+  phoneE164: string | null;
   firstName: string | null;
   lastName: string | null;
   company: string | null;
@@ -17,6 +18,10 @@ type LeadWithRelations = {
   source: string | null;
   legalBasis: string | null;
   consentNotes: string | null;
+  whatsappOptIn: boolean;
+  whatsappConsentSource: string | null;
+  whatsappStatus: WhatsappLeadStatus;
+  whatsappStoppedAt: Date | null;
   status: LeadStatus;
   createdAt: Date;
   tags: { id: string; name: string }[];
@@ -70,6 +75,14 @@ export function LeadProfilePanel({ lead }: { lead: LeadWithRelations | null }) {
           <ProfileRow label="Website" value={lead.website} />
           <ProfileRow label="Source" value={lead.source} />
           <ProfileRow label="Legal basis" value={lead.legalBasis} />
+          <ProfileRow label="WhatsApp phone" value={lead.phoneE164} />
+          <ProfileRow label="WhatsApp status" value={whatsappLeadStatusLabels[lead.whatsappStatus]} />
+          <ProfileRow label="WhatsApp opt-in" value={lead.whatsappOptIn ? "Yes" : "No"} />
+          <ProfileRow label="WhatsApp consent" value={lead.whatsappConsentSource} />
+          <ProfileRow
+            label="WhatsApp stopped"
+            value={lead.whatsappStoppedAt ? formatDate(lead.whatsappStoppedAt) : null}
+          />
           <ProfileRow label="Imported" value={formatDate(lead.createdAt)} />
         </div>
 

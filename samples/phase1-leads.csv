@@ -1,5 +1,5 @@
-email,first_name,last_name,company,website,role,industry,country,source,source_url,legal_basis,consent_notes,tags
-founder@example.com,Aisha,Khan,Example Studio,https://example.com,Founder,Design,United States,manual test,https://example.com,legitimate interest,Public business website review,website;warm
-ops@example.org,Omar,Ali,Example Ops,https://example.org,Operations Lead,SaaS,United Kingdom,manual test,https://example.org,legitimate interest,Relevant B2B operations contact,automation;cold
-broken-email,Nora,Test,Broken Co,https://broken.example,Owner,Retail,Canada,manual test,https://broken.example,consent,Invalid row for importer test,invalid
-missingbasis@example.net,Sam,NoBasis,Missing Basis Co,https://missing.example,Manager,Ecommerce,,manual test,https://missing.example,,Missing country and legal basis,flagged
+email,phone,first_name,last_name,company,website,role,industry,country,source,source_url,legal_basis,consent_notes,whatsapp_opt_in,whatsapp_consent_source,tags
+founder@example.com,+12025550101,Aisha,Khan,Example Studio,https://example.com,Founder,Design,United States,manual test,https://example.com,legitimate interest,Public business website review,yes,Website inquiry form,website;warm
+ops@example.org,+442071838750,Omar,Ali,Example Ops,https://example.org,Operations Lead,SaaS,United Kingdom,manual test,https://example.org,legitimate interest,Relevant B2B operations contact,yes,Existing client list,automation;cold
+broken-email,+1555,Nora,Test,Broken Co,https://broken.example,Owner,Retail,Canada,manual test,https://broken.example,consent,Invalid row for importer test,yes,Manual consent,invalid
+missingbasis@example.net,,Sam,NoBasis,Missing Basis Co,https://missing.example,Manager,Ecommerce,,manual test,https://missing.example,,Missing country and legal basis,no,,flagged

@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 
 const mappingSchema = z.object({
   email: z.string().min(1),
+  phone: z.string().optional(),
   firstName: z.string().optional(),
   lastName: z.string().optional(),
   company: z.string().optional(),
@@ -19,6 +20,8 @@ const mappingSchema = z.object({
   sourceUrl: z.string().optional(),
   legalBasis: z.string().optional(),
   consentNotes: z.string().optional(),
+  whatsappOptIn: z.string().optional(),
+  whatsappConsentSource: z.string().optional(),
   tags: z.string().optional()
 });
 
@@ -64,11 +67,18 @@ export async function POST(request: Request) {
     }));
 
     const candidateEmails = preparedRows.map(({ prepared }) => prepared.email).filter(Boolean);
+    const candidatePhones = preparedRows
+      .map(({ prepared }) => prepared.phoneE164)
+      .filter(Boolean) as string[];
 
-    const [existingLeads, suppressions] = await Promise.all([
+    const [existingLeads, existingPhoneLeads, suppressions] = await Promise.all([
       tx.lead.findMany({
         where: { email: { in: candidateEmails } },
         select: { email: true }
+      }),
+      tx.lead.findMany({
+        where: { phoneE164: { in: candidatePhones } },
+        select: { phoneE164: true }
       }),
       tx.suppressionEntry.findMany({
         where: { email: { in: candidateEmails } },
@@ -77,8 +87,12 @@ export async function POST(request: Request) {
     ]);
 
     const existingEmails = new Set(existingLeads.map((lead) => lead.email));
+    const existingPhones = new Set(
+      existingPhoneLeads.map((lead) => lead.phoneE164).filter(Boolean) as string[]
+    );
     const suppressedEmails = new Set(suppressions.map((entry) => entry.email));
     const seenInFile = new Set<string>();
+    const seenPhonesInFile = new Set<string>();
     const counters = {
       importedRows: 0,
       invalidRows: 0,
@@ -91,7 +105,9 @@ export async function POST(request: Request) {
       const classification = classifyImportCandidate({
         prepared,
         seenInFile,
+        seenPhonesInFile,
         existingEmails,
+        existingPhones,
         suppressedEmails
       });
       const { issues, status } = classification;
@@ -105,10 +121,12 @@ export async function POST(request: Request) {
         counters.suppressedRows += 1;
       } else {
         seenInFile.add(prepared.email);
+        if (prepared.phoneE164) seenPhonesInFile.add(prepared.phoneE164);
 
         const lead = await tx.lead.create({
           data: {
             email: prepared.email,
+            phoneE164: prepared.phoneE164 || null,
             firstName: prepared.firstName || null,
             lastName: prepared.lastName || null,
             company: prepared.company || null,
@@ -121,6 +139,13 @@ export async function POST(request: Request) {
             sourceUrl: prepared.sourceUrl || null,
             legalBasis: prepared.legalBasis || null,
             consentNotes: prepared.consentNotes || null,
+            whatsappOptIn: prepared.whatsappOptIn,
+            whatsappConsentSource: prepared.whatsappConsentSource || null,
+            whatsappStatus: prepared.phoneE164
+              ? prepared.whatsappOptIn
+                ? "OPTED_IN"
+                : "UNKNOWN"
+              : "UNKNOWN",
             status: status === "FLAGGED" ? LeadStatus.NEW : LeadStatus.VALIDATED,
             tags: {
               create: prepared.tags.map((name) => ({ name }))
@@ -149,6 +174,7 @@ export async function POST(request: Request) {
           rowNumber: index + 1,
           raw: row as Prisma.InputJsonObject,
           email: prepared.email || null,
+          phoneE164: prepared.phoneE164 || null,
           status,
           issues,
           leadId
