@@ -95,16 +95,20 @@ Configured on the VPS:
 - `OPENAI_API_KEY`
 - `OPENAI_CAMPAIGN_MODEL=gpt-4.1-mini`
 - `OPENAI_REPLY_MODEL=gpt-4.1-mini`
+- `SMTP_PASS`
+- `SMTP_PASSWORD`
+- `IMAP_HOST=imap.hostinger.com`
+- `IMAP_PORT=993`
+- `IMAP_USER=info@virtuprose.com`
+- `IMAP_PASS`
+- `IMAP_SECURE=true`
+- `EMAIL_REPLY_POLL_SECONDS=60`
 
 Missing or pending:
 
-- `SMTP_PASS`
-- `SMTP_PASSWORD`
-- `IMAP_HOST`
-- `IMAP_USER`
-- `IMAP_PASS`
-- Real owner hot-lead alert email delivery until SMTP is configured
-- Automatic email reply receiving until IMAP is configured
+- Confirm test email receipt in `moh@virtuprose.com`
+- Confirm one real email to `info@virtuprose.com` appears in Replies through IMAP
+- Confirm SPF, DKIM, and DMARC before email volume
 - Confirm Meta webhook callback and message/status subscriptions in Meta App Dashboard
 
 ## Current Access
@@ -179,6 +183,6 @@ ssh root@31.97.213.79 'cd /opt/virtuprose-sales-assistant && docker compose --en
 - Inbound WhatsApp replies and AI auto-replies require Meta App Dashboard webhook setup and message/status subscriptions.
 - AI classification and AI reply drafting are configured with `gpt-4.1-mini`; test one live reply before relying on automation.
 - The AI reply queue is `ai-reply-sending`; confirm worker logs show this queue is ready after deploy.
-- Owner hot-lead alerts are addressed to `moh@virtuprose.com`, but real delivery requires live SMTP credentials and email dry-run off.
-- Automatic email reply receiving requires IMAP credentials and a worker restart.
-- Email sending requires SMTP credentials and domain deliverability setup.
+- Owner hot-lead alerts are addressed to `moh@virtuprose.com`; production SMTP is configured through `info@virtuprose.com`.
+- Automatic email reply receiving is configured through IMAP for `info@virtuprose.com`.
+- Email volume still requires domain deliverability setup and inbox-placement testing.

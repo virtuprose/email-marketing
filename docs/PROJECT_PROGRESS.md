@@ -67,12 +67,14 @@ Set on VPS:
 - Meta signature validation
 - Meta WhatsApp live mode
 - OpenAI API key and `gpt-4.1-mini` reply/campaign models
+- Hostinger SMTP for `info@virtuprose.com`
+- Hostinger IMAP for `info@virtuprose.com`
 
-Missing on VPS:
+Pending/verify on VPS:
 
-- SMTP password values
-- IMAP inbox credentials for automatic email reply receiving
-- Live owner alert email delivery until SMTP is configured and email dry-run is off
+- Confirm the test email sent from `info@virtuprose.com` reaches the owner inbox.
+- Confirm one real incoming email to `info@virtuprose.com` appears in Replies through IMAP.
+- Confirm SPF, DKIM, and DMARC are correct before email volume.
 
 ## What Works Now
 
@@ -84,7 +86,8 @@ Missing on VPS:
 - WhatsApp sending is in live mode.
 - AI Assistant is available from the sidebar.
 - AI can classify replies, create drafts, and queue Auto Safe replies when all safety rules pass.
-- Hot, pricing, and meeting replies hand off to the owner and try to alert `moh@virtuprose.com`.
+- Hot, pricing, and meeting replies hand off to the owner and send alert emails to `moh@virtuprose.com`.
+- SMTP and IMAP authentication are verified for `info@virtuprose.com`.
 - Existing UI and workflow pages are available.
 
 ## What Is Not Fully Ready Yet
@@ -101,7 +104,7 @@ Implemented:
 Pending:
 
 - Test one live inbound WhatsApp reply and confirm AI classification plus the send/block decision.
-- Add SMTP credentials before relying on owner email alerts for hot leads.
+- Confirm owner hot-lead alert delivery in the `moh@virtuprose.com` inbox.
 
 ### WhatsApp Inbound Replies
 
@@ -125,18 +128,15 @@ Implemented:
 
 Pending:
 
-- Add `IMAP_HOST`, `IMAP_USER`, `IMAP_PASS`, and related IMAP env values on the VPS.
-- Restart the worker and confirm one real email reply appears in Replies.
+- Send one real email to `info@virtuprose.com` and confirm it appears in Replies.
 
 ### Email Sending
 
 Pending:
 
-- Add SMTP credentials.
 - Confirm SPF, DKIM, and DMARC for the sending domain.
 - Send only small test batches first.
 - Keep sender reputation checks active before volume.
-- Disable email dry-run only after a real test inbox receives mail.
 - Confirm hot-lead owner alert emails reach `moh@virtuprose.com`.
 
 ### Production Safety
@@ -154,7 +154,7 @@ Pending:
 1. Test one inbound WhatsApp reply and confirm it appears in Replies.
 2. Confirm AI Assistant classifies it and either drafts or safely auto-replies.
 3. Send a pricing/meeting-style reply and confirm it becomes a hot lead.
-4. Add SMTP credentials and confirm owner alert emails reach `moh@virtuprose.com`.
-5. Add IMAP credentials and confirm one real email reply appears automatically.
+4. Confirm owner alert emails reach `moh@virtuprose.com`.
+5. Send one real email to `info@virtuprose.com` and confirm it appears automatically in Replies.
 6. Add a daily Postgres backup.
 7. Keep message caps low while testing.

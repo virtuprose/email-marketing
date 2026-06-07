@@ -97,7 +97,7 @@ curl http://localhost:3000/api/health
 - Lead activity timeline
 - Import result review
 
-Campaign sending, WhatsApp Cloud API, the AI Assistant control center, owner-friendly UI, and VPS deployment are implemented. Production still needs SMTP credentials for real email sends and owner alert emails, plus IMAP credentials for automatic email reply receiving.
+Campaign sending, WhatsApp Cloud API, the AI Assistant control center, owner-friendly UI, and VPS deployment are implemented. Production SMTP and IMAP are configured for `info@virtuprose.com`; keep volume low until real inbox delivery, SPF/DKIM/DMARC, and reply capture are verified.
 
 ## Campaign Scope
 
@@ -109,7 +109,7 @@ Campaign sending, WhatsApp Cloud API, the AI Assistant control center, owner-fri
 - Review checklist that blocks approval for empty audiences, suppressed leads, missing lead compliance fields, missing unsubscribe, missing sender identity, or disallowed claims
 - Campaign approval for Phase 3 scheduling only
 
-Email sending infrastructure exists, but production email sending still needs SMTP credentials and domain authentication checks before volume.
+Email sending infrastructure exists and production SMTP is configured through Hostinger for `info@virtuprose.com`. Domain authentication and real inbox placement still need to be verified before volume.
 
 ## Phase 3 Scope
 
@@ -133,13 +133,13 @@ Do not disable dry-run for production until SPF, DKIM, DMARC, mailbox warmup, an
 - Reply classification into hot lead, pricing request, meeting request, proof request, objection, not interested, unsubscribe, complaint, and unclear.
 - Conversation memory includes recent same-channel messages so drafts are not context blind.
 - Lead-level **AI off for this lead** takeover is available in Replies, WhatsApp Inbox, and Hot Leads.
-- Hot-lead, pricing, and meeting intent trigger owner handoff and an owner alert email to `moh@virtuprose.com` when SMTP is live.
+- Hot-lead, pricing, and meeting intent trigger owner handoff and an owner alert email to `moh@virtuprose.com`.
 - Reply-safe suppression handling for unsubscribe and complaint language.
 - Automatic stopping of queued follow-ups after a lead replies.
 - Hot-lead scoring with fit, engagement, and intent scores.
 - Lightweight deal pipeline created from replies.
 - `ai-reply-sending` worker queue handles delayed AI auto-replies.
-- IMAP polling for email replies is implemented, but only starts after `IMAP_HOST`, `IMAP_USER`, and `IMAP_PASS` are configured.
+- IMAP polling for email replies is configured on production for `info@virtuprose.com`.
 - Inbound webhook endpoint remains available as an advanced fallback and is protected by `INBOUND_WEBHOOK_SECRET`.
 
 ## Ready-To-Use Internal Workflow
@@ -167,7 +167,7 @@ Body: {
 9. Review the AI draft or safe auto-reply decision from Replies. In email dry-run mode, this records the send without contacting SMTP.
 10. Work hot leads from `/pipeline` and mark outcomes as won, lost, proposal sent, or follow-up later.
 
-For real email sending and hot-lead alert emails, configure a real reply-to inbox, set `SMTP_PASS`/`SMTP_PASSWORD`, disable dry-run only after test delivery is confirmed, and keep the worker running. For automatic email reply receiving, set the IMAP variables and restart the worker.
+For real email sending and hot-lead alert emails, production now uses `info@virtuprose.com`. Keep the worker running, confirm test delivery reaches the inbox, and keep volume conservative until deliverability is proven.
 
 ## WhatsApp Cloud API Scope
 

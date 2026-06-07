@@ -31,8 +31,9 @@ This project is an internal, single-owner Virtuprose platform for lead import, c
 - Production credentials are stored in `/opt/virtuprose-sales-assistant/.env.production` on the VPS and must never be committed.
 - Owner login details are saved locally in `/Users/muhammadzaid/.codex/virtuprose-sales-assistant-vps-credentials.txt`.
 - `OPENAI_API_KEY` is configured on the VPS.
-- SMTP passwords are currently missing on the VPS, so production email sending and real hot-lead alert emails are pending.
-- IMAP credentials are currently missing on the VPS, so automatic email reply receiving is pending.
+- Hostinger SMTP is configured on the VPS for `info@virtuprose.com`.
+- Hostinger IMAP is configured on the VPS for `info@virtuprose.com`.
+- A controlled SMTP test email was accepted by Hostinger from `info@virtuprose.com` to `moh@virtuprose.com`; inbox receipt still needs owner confirmation.
 - HTTPS is configured at `https://sales.virtuprose.com`; confirm the Meta App Dashboard webhook is still subscribed to message and status events after each app or WABA change.
 
 ## Architecture
@@ -116,6 +117,17 @@ EMAIL_REPLY_POLL_SECONDS="60"
 SMTP_PASS=""
 SMTP_PASSWORD=""
 ```
+
+Production email account:
+
+- From/reply inbox: `info@virtuprose.com`
+- SMTP host: `smtp.hostinger.com`
+- SMTP port: `465`
+- SMTP secure/TLS: `true`
+- IMAP host: `imap.hostinger.com`
+- IMAP port: `993`
+- IMAP secure/TLS: `true`
+- Passwords live only in `/opt/virtuprose-sales-assistant/.env.production` on the VPS and must never be committed.
 
 Meta WhatsApp:
 
@@ -278,11 +290,11 @@ Owner alert email behavior:
 - Triggered for hot lead, pricing request, meeting request, proposal request, or high-intent custom scope.
 - Deduped per inbound reply.
 - Logged as `ai_assistant.hot_lead_alert_sent` or `ai_assistant.hot_lead_alert_failed`.
-- Requires live SMTP settings; until then, the dashboard warns that alerts are not live.
+- Requires live SMTP settings. Production SMTP is configured, but the owner should confirm real inbox receipt.
 
 Email reply receiving:
 
-- IMAP polling starts only when `IMAP_HOST`, `IMAP_USER`, and `IMAP_PASS` are set.
+- IMAP polling starts only when `IMAP_HOST`, `IMAP_USER`, and `IMAP_PASS` are set. Production IMAP is configured for `info@virtuprose.com`.
 - Poll interval defaults to `EMAIL_REPLY_POLL_SECONDS=60`.
 - Processed email replies are passed into the same `ingestInboundReply` workflow used by webhooks.
 - `/api/inbound/replies` remains available for provider webhooks or manual integrations.
@@ -394,8 +406,9 @@ Provider mapping:
 - A permanent System User token should replace the dashboard-generated user token before unattended production use.
 - Confirm Meta App Dashboard is subscribed to message and status events at `https://sales.virtuprose.com/api/webhooks/meta/whatsapp`.
 - One live inbound WhatsApp reply should be tested before trusting auto-replies.
-- SMTP credentials must be added before production email sending and owner hot-lead alert emails.
-- IMAP credentials must be added before automatic email reply receiving.
+- Confirm production test email receipt in `moh@virtuprose.com`.
+- Confirm one real incoming email to `info@virtuprose.com` appears in Replies through IMAP.
+- Confirm SPF, DKIM, and DMARC before email volume.
 - Payment method and message limits should be confirmed in WhatsApp Manager before volume.
 - Old Twilio-specific secrets should stay removed from `.env.example` and should never be committed.
 - The current dashboard is single-user and protected by Basic Auth, not multi-user role-based auth.

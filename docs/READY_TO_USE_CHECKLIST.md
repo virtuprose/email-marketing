@@ -21,7 +21,7 @@ Current VPS deployment:
 - Keep dry-run enabled until live inbox receipt is proven.
 - Configure sender name, sender email, physical address, and reply-to in Settings.
 - Set conservative caps first: low daily cap, low per-minute cap, and per-domain cap.
-- Confirm `SMTP_PASS` is present before disabling dry-run.
+- Production SMTP is configured for `info@virtuprose.com`; confirm inbox receipt before relying on it.
 - Run a test send and confirm mailbox receipt, not only a successful API response.
 - Confirm owner hot-lead alert emails reach `moh@virtuprose.com` before relying on alerts.
 
@@ -72,7 +72,7 @@ Current status on VPS:
 - Paste replies into `/inbox` while inbound routing is not connected.
 - If using a provider inbound parser, set `INBOUND_WEBHOOK_SECRET`.
 - Connect provider inbound parser to `/api/inbound/replies`.
-- For automatic email reply receiving, configure `IMAP_HOST`, `IMAP_USER`, and `IMAP_PASS`, then restart the worker.
+- Automatic email reply receiving is configured through IMAP for `info@virtuprose.com`; send one real email to confirm it appears in Replies.
 - Review AI drafts manually unless Auto Safe behavior has been tested end to end.
 - Do not send AI replies to unsubscribe, complaint, suppressed, or do-not-contact leads.
 - Hot replies should be handled personally from the pipeline.
