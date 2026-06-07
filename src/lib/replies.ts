@@ -16,11 +16,21 @@ import {
   WhatsappEventType,
   WhatsappLeadStatus,
   WhatsappMessageStatus,
+  type AiReplyDraft,
   type InboundReply,
   type Lead,
   type Offer
 } from "@prisma/client";
 import { z } from "zod";
+import {
+  buildDecisionForDraft,
+  decideAiReplyAutomation,
+  getAiAssistantSettings,
+  logAiAssistantDecision,
+  queueAiReplyDraft,
+  sendHotLeadOwnerAlert,
+  type AiAssistantSettings
+} from "./ai-assistant";
 import { isValidEmail, normalizeEmail } from "./imports";
 import { prisma } from "./prisma";
 import { refreshSendJobProgress, sendDirectEmail } from "./sending";
@@ -75,6 +85,13 @@ export type ReplyDraftResult = {
   confidence: number;
   rationale: string;
   riskFlags: string[];
+};
+
+type ConversationMemoryItem = {
+  channel: MessageChannel;
+  direction: "inbound" | "outbound";
+  text: string;
+  at: string;
 };
 
 const analysisSchema = z.object({
@@ -185,6 +202,37 @@ export function analyzeReplyLocally({
       leadStatus: LeadStatus.HOT,
       scoreIntent: 90,
       scoreEngagement: 86,
+      dealStage: DealStage.HOT
+    };
+  }
+
+  if (
+    matchesAny(text, [
+      "need an app",
+      "build an app",
+      "need a website",
+      "build a website",
+      "need ecommerce",
+      "need e-commerce",
+      "custom software",
+      "automation for",
+      "we have a project",
+      "project in mind",
+      "can you help us build"
+    ])
+  ) {
+    return {
+      intent: ReplyIntent.HOT_LEAD,
+      sentiment: ReplySentiment.POSITIVE,
+      confidence: 90,
+      summary: "The lead described a project or custom scope that needs owner qualification.",
+      suggestedAction: "Owner should take over, ask for scope, and decide the next step.",
+      ownerActionRequired: true,
+      autoReplyEligible: false,
+      riskFlags: ["Owner handoff required for custom scope."],
+      leadStatus: LeadStatus.HOT,
+      scoreIntent: 94,
+      scoreEngagement: 88,
       dealStage: DealStage.HOT
     };
   }
@@ -549,21 +597,66 @@ export async function processInboundReply(replyId: string, knownOffer?: Offer | 
   if (!reply.lead) throw new Error("Inbound reply is not linked to a lead.");
 
   const lead = reply.lead;
+  const settings = await getAiAssistantSettings();
+  if (!settings.enabled || settings.mode === "PAUSED") {
+    await prisma.$transaction(async (tx) => {
+      await tx.inboundReply.update({
+        where: { id: reply.id },
+        data: {
+          status: ReplyStatus.OWNER_REVIEW,
+          ownerActionRequired: true,
+          autoReplyEligible: false,
+          aiSummary: "AI Assistant is paused, so this reply is waiting for owner review.",
+          aiSuggestedAction: "Review this reply manually or turn AI Assistant back on."
+        }
+      });
+      await tx.auditLog.create({
+        data: {
+          action: "ai_assistant.decision",
+          entityType: "inbound_reply",
+          entityId: reply.id,
+          metadata: {
+            leadId: lead.id,
+            shouldAutoSend: false,
+            shouldNotifyOwner: false,
+            delaySeconds: 0,
+            mode: settings.mode,
+            reasons: [settings.enabled ? "AI Assistant is paused." : "AI Assistant is turned off."]
+          }
+        }
+      });
+    });
+    const pausedReply = await prisma.inboundReply.findUnique({
+      where: { id: reply.id },
+      include: { lead: true, drafts: { orderBy: { createdAt: "desc" }, take: 1 } }
+    });
+    if (!pausedReply) throw new Error("Processed inbound reply not found.");
+    return pausedReply;
+  }
+
   const offer = knownOffer ?? reply.campaign?.offer ?? reply.whatsappMessage?.campaign?.offer ?? null;
-  const analysis = await analyzeReplyWithAiFallback(reply, offer);
+  const conversationMemory = await buildConversationMemory({
+    leadId: lead.id,
+    channel: reply.channel,
+    currentReplyId: reply.id
+  });
+  const analysis = await analyzeReplyWithAiFallback(reply, offer, settings, conversationMemory);
   const shouldSuppress =
     analysis.intent === ReplyIntent.UNSUBSCRIBE || analysis.intent === ReplyIntent.COMPLAINT;
   const draft = await generateReplyDraftWithAiFallback({
     reply,
     lead,
     offer,
-    analysis
+    analysis,
+    settings,
+    conversationMemory
   });
   const stopped = await stopQueuedFollowUpsForLead(lead.id, reply.campaignId);
   const stoppedWhatsapp = await stopQueuedWhatsappMessagesForLead(lead.id, reply.whatsappMessage?.campaignId);
   const nextActionAt = nextActionForAnalysis(analysis);
   const status = replyStatusForAnalysis(analysis);
   const fitScore = scoreFit(lead);
+  let createdDraftId: string | null = null;
 
   await prisma.$transaction(async (tx) => {
     await tx.inboundReply.update({
@@ -588,7 +681,16 @@ export async function processInboundReply(replyId: string, knownOffer?: Offer | 
         scoreFit: Math.max(lead.scoreFit, fitScore),
         scoreEngagement: Math.max(lead.scoreEngagement, analysis.scoreEngagement),
         scoreIntent: Math.max(lead.scoreIntent, analysis.scoreIntent),
-        nextActionAt
+        nextActionAt,
+        aiAutoReplyPaused: hotIntents.has(analysis.intent) ? true : lead.aiAutoReplyPaused,
+        aiAutoReplyPausedAt: hotIntents.has(analysis.intent) ? new Date() : lead.aiAutoReplyPausedAt,
+        aiAutoReplyPauseReason: hotIntents.has(analysis.intent)
+          ? "AI handed this hot lead to the owner."
+          : lead.aiAutoReplyPauseReason,
+        whatsappBotPaused: hotIntents.has(analysis.intent) ? true : lead.whatsappBotPaused,
+        whatsappHandoffReason: hotIntents.has(analysis.intent)
+          ? "AI handed this hot lead to the owner."
+          : lead.whatsappHandoffReason
       }
     });
 
@@ -629,7 +731,7 @@ export async function processInboundReply(replyId: string, knownOffer?: Offer | 
       });
     }
 
-    await tx.aiReplyDraft.create({
+    const createdDraft = await tx.aiReplyDraft.create({
       data: {
         replyId: reply.id,
         channel: reply.channel,
@@ -643,10 +745,11 @@ export async function processInboundReply(replyId: string, knownOffer?: Offer | 
         bodyText: draft.bodyText,
         confidence: draft.confidence,
         rationale: draft.rationale,
-        riskFlags: draft.riskFlags,
+        riskFlags: [...draft.riskFlags, ...(settings.mode === "TEST_MODE" ? ["Test Mode is on."] : [])],
         policyVersion: REPLY_POLICY_VERSION
       }
     });
+    createdDraftId = createdDraft.id;
 
     await tx.emailEvent.create({
       data: {
@@ -699,7 +802,13 @@ export async function processInboundReply(replyId: string, knownOffer?: Offer | 
           intent: analysis.intent,
           confidence: analysis.confidence,
           stoppedQueuedFollowUps: stopped.skipped,
-          stoppedQueuedWhatsappMessages: stoppedWhatsapp.skipped
+          stoppedQueuedWhatsappMessages: stoppedWhatsapp.skipped,
+          promptVersion: REPLY_POLICY_VERSION,
+          knowledgeUsed: {
+            companyIntro: settings.knowledgeBase.companyIntro,
+            services: settings.knowledgeBase.services,
+            pricingRules: settings.knowledgeBase.pricingRules
+          }
         }
       }
     });
@@ -709,19 +818,34 @@ export async function processInboundReply(replyId: string, knownOffer?: Offer | 
     await refreshSendJobProgress(sendJobId);
   }
 
-  if (
-    reply.channel === MessageChannel.WHATSAPP &&
-    analysis.autoReplyEligible &&
-    analysis.riskFlags.length === 0 &&
-    !shouldSuppress &&
-    isWithinWhatsappServiceWindow(reply.lead?.whatsappServiceWindowExpiresAt, reply.receivedAt)
-  ) {
-    const latestDraft = await prisma.aiReplyDraft.findFirst({
-      where: { replyId: reply.id, status: AiReplyDraftStatus.DRAFT },
-      orderBy: { createdAt: "desc" }
+  if (createdDraftId) {
+    const createdDraft = await prisma.aiReplyDraft.findUnique({
+      where: { id: createdDraftId },
+      include: { reply: true, lead: true }
     });
-    if (latestDraft) {
-      await sendAiReplyDraft(latestDraft.id);
+    if (createdDraft?.lead) {
+      const decision = await buildDecisionForDraft(
+        createdDraft as AiReplyDraft & { reply: InboundReply; lead: Lead },
+        settings
+      );
+      await logAiAssistantDecision({
+        replyId: reply.id,
+        draftId: createdDraft.id,
+        leadId: lead.id,
+        decision,
+        metadata: {
+          intent: analysis.intent,
+          confidence: analysis.confidence,
+          channel: reply.channel,
+          promptVersion: REPLY_POLICY_VERSION
+        }
+      });
+      if (decision.shouldNotifyOwner) {
+        await sendHotLeadOwnerAlert(reply.id);
+      }
+      if (decision.shouldAutoSend && !shouldSuppress) {
+        await queueAiReplyDraft(createdDraft.id, decision.delaySeconds);
+      }
     }
   }
 
@@ -936,6 +1060,129 @@ export async function markReplyOwnerReviewed(replyId: string) {
   return reply;
 }
 
+export async function pauseAiForLead(leadId: string, reason = "Owner took over this lead.") {
+  const lead = await prisma.lead.update({
+    where: { id: leadId },
+    data: {
+      aiAutoReplyPaused: true,
+      aiAutoReplyPausedAt: new Date(),
+      aiAutoReplyPauseReason: reason,
+      whatsappBotPaused: true,
+      whatsappHandoffReason: reason
+    }
+  });
+
+  await prisma.auditLog.create({
+    data: {
+      action: "ai_assistant.lead_paused",
+      entityType: "lead",
+      entityId: lead.id,
+      metadata: { reason }
+    }
+  });
+
+  return lead;
+}
+
+export async function resumeAiForLead(leadId: string) {
+  const lead = await prisma.lead.update({
+    where: { id: leadId },
+    data: {
+      aiAutoReplyPaused: false,
+      aiAutoReplyPausedAt: null,
+      aiAutoReplyPauseReason: null,
+      whatsappBotPaused: false,
+      whatsappHandoffReason: null
+    }
+  });
+
+  await prisma.auditLog.create({
+    data: {
+      action: "ai_assistant.lead_resumed",
+      entityType: "lead",
+      entityId: lead.id,
+      metadata: { reason: "Owner turned AI back on for this lead." }
+    }
+  });
+
+  return lead;
+}
+
+export async function previewAiAssistantReply({
+  channel,
+  bodyText,
+  subject = "Test reply"
+}: {
+  channel: MessageChannel;
+  bodyText: string;
+  subject?: string;
+}) {
+  const settings = await getAiAssistantSettings();
+  const offer = await prisma.offer.findFirst({ where: { active: true }, orderBy: { createdAt: "asc" } });
+  const reply = {
+    id: "preview",
+    channel,
+    subject,
+    bodyText,
+    intent: ReplyIntent.UNCLEAR,
+    aiConfidence: 0,
+    autoReplyEligible: false,
+    riskFlags: [],
+    ownerActionRequired: true
+  };
+  const lead = {
+    id: "preview-lead",
+    email: "preview@example.com",
+    phoneE164: "+96500000000",
+    firstName: "Preview",
+    lastName: null,
+    company: "Preview Company",
+    website: null,
+    role: null,
+    industry: null,
+    country: null,
+    timezone: null,
+    source: "ai_preview",
+    sourceUrl: null,
+    legalBasis: "Preview",
+    consentNotes: null,
+    whatsappOptIn: true,
+    whatsappConsentSource: "Preview",
+    whatsappStatus: WhatsappLeadStatus.OPTED_IN,
+    lastWhatsappContactedAt: null,
+    lastWhatsappCustomerMessageAt: new Date(),
+    whatsappServiceWindowExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+    whatsappBotPaused: false,
+    whatsappHandoffReason: null,
+    whatsappStoppedAt: null,
+    aiAutoReplyPaused: false,
+    aiAutoReplyPausedAt: null,
+    aiAutoReplyPauseReason: null,
+    ownerNotes: null,
+    status: LeadStatus.REPLIED,
+    scoreFit: 50,
+    scoreEngagement: 50,
+    scoreIntent: 0,
+    lastContactedAt: null,
+    nextActionAt: null,
+    createdAt: new Date(),
+    updatedAt: new Date()
+  } as Lead;
+
+  const analysis = await analyzeReplyWithAiFallback(reply, offer, settings, []);
+  const draft = await generateReplyDraftWithAiFallback({
+    reply,
+    lead,
+    offer,
+    analysis,
+    settings,
+    conversationMemory: []
+  });
+  const decision = await decidePreviewAutomation({ channel, analysis, draft, settings });
+
+  return { analysis, draft, decision };
+}
+
 export async function markReplyAsHot(replyId: string) {
   const reply = await prisma.inboundReply.findUnique({ where: { id: replyId }, include: { lead: true } });
   if (!reply || !reply.lead) throw new Error("Reply not found.");
@@ -955,7 +1202,12 @@ export async function markReplyAsHot(replyId: string) {
       data: {
         status: LeadStatus.HOT,
         scoreIntent: 100,
-        scoreEngagement: Math.max(reply.lead!.scoreEngagement, 90)
+        scoreEngagement: Math.max(reply.lead!.scoreEngagement, 90),
+        aiAutoReplyPaused: true,
+        aiAutoReplyPausedAt: new Date(),
+        aiAutoReplyPauseReason: "Owner handoff for hot lead.",
+        whatsappBotPaused: true,
+        whatsappHandoffReason: "Owner handoff for hot lead."
       }
     });
     await tx.deal.upsert({
@@ -985,6 +1237,7 @@ export async function markReplyAsHot(replyId: string) {
     });
   });
 
+  await sendHotLeadOwnerAlert(reply.id);
   return reply;
 }
 
@@ -1022,7 +1275,9 @@ export async function updateDealStage(dealId: string, stage: DealStage, notes?: 
 
 async function analyzeReplyWithAiFallback(
   reply: Pick<InboundReply, "subject" | "bodyText">,
-  offer?: Offer | null
+  offer?: Offer | null,
+  settings?: AiAssistantSettings,
+  conversationMemory: ConversationMemoryItem[] = []
 ) {
   const fallback = analyzeReplyLocally(reply);
   const apiKey = process.env.OPENAI_API_KEY;
@@ -1042,8 +1297,15 @@ async function analyzeReplyWithAiFallback(
         input: [
           {
             role: "system",
-            content:
-              "You classify inbound B2B sales replies for Virtuprose. Output only JSON. Never recommend replying after unsubscribe or complaint. Do not invent facts, prices, guarantees, availability, or portfolio claims."
+            content: [
+              settings?.prompts.businessRules || "",
+              settings?.prompts.classifier ||
+                "Classify inbound B2B sales replies for Virtuprose. Output only JSON.",
+              settings?.prompts.safety || "",
+              "Output only JSON. Never recommend replying after unsubscribe or complaint. Do not invent facts, prices, guarantees, availability, portfolio claims, or unsupported proof."
+            ]
+              .filter(Boolean)
+              .join("\n\n")
           },
           {
             role: "user",
@@ -1051,6 +1313,8 @@ async function analyzeReplyWithAiFallback(
               subject: reply.subject,
               bodyText: reply.bodyText,
               offer,
+              conversationMemory,
+              approvedKnowledge: settings?.knowledgeBase,
               allowedLeadStatuses: Object.values(LeadStatus),
               allowedDealStages: Object.values(DealStage),
               allowedIntents: Object.values(ReplyIntent)
@@ -1114,12 +1378,16 @@ async function generateReplyDraftWithAiFallback({
   reply,
   lead,
   offer,
-  analysis
+  analysis,
+  settings,
+  conversationMemory = []
 }: {
   reply: Pick<InboundReply, "subject" | "bodyText">;
   lead: Lead;
   offer?: Offer | null;
   analysis: ReplyAnalysis;
+  settings?: AiAssistantSettings;
+  conversationMemory?: ConversationMemoryItem[];
 }) {
   const fallback = generateLocalReplyDraft({ reply, lead, offer, analysis });
   const apiKey = process.env.OPENAI_API_KEY;
@@ -1141,8 +1409,19 @@ async function generateReplyDraftWithAiFallback({
         input: [
           {
             role: "system",
-            content:
-              "You draft concise B2B reply emails for Virtuprose. Output only JSON. Use only provided facts. Do not mention prices, guarantees, fake availability, fake case studies, or unsupported claims. Keep one clear next question. Include a low-pressure opt-out sentence."
+            content: [
+              settings?.prompts.businessRules || "",
+              settings?.prompts.safety || "",
+              settings
+                ? "Use only the approved knowledge base and current offer context. If the lead asks for pricing, meeting, proposal, exact scope, or anything not approved, create a safe handoff-style draft and do not invent details."
+                : "",
+              "Output only JSON.",
+              "For WhatsApp, keep the reply short and conversational with no subject-line wording.",
+              "For email, stay concise and professional.",
+              "Do not mention AI. Do not mention prices, guarantees, fake availability, fake case studies, unsupported claims, or exact timelines. Keep one clear next question."
+            ]
+              .filter(Boolean)
+              .join("\n\n")
           },
           {
             role: "user",
@@ -1155,6 +1434,8 @@ async function generateReplyDraftWithAiFallback({
                 email: lead.email
               },
               offer,
+              approvedKnowledge: settings?.knowledgeBase,
+              conversationMemory,
               analysis
             })
           }
@@ -1213,6 +1494,104 @@ async function ensureLeadForReply(email: string) {
       status: LeadStatus.REPLIED,
       scoreEngagement: 50
     }
+  });
+}
+
+async function buildConversationMemory({
+  leadId,
+  channel,
+  currentReplyId
+}: {
+  leadId: string;
+  channel: MessageChannel;
+  currentReplyId: string;
+}): Promise<ConversationMemoryItem[]> {
+  if (channel === MessageChannel.WHATSAPP) {
+    const messages = await prisma.whatsappMessage.findMany({
+      where: { leadId },
+      orderBy: [{ sentAt: "desc" }, { createdAt: "desc" }],
+      take: 8
+    });
+    return messages
+      .reverse()
+      .filter((message) => Boolean(message.bodyText))
+      .slice(-5)
+      .map((message) => ({
+        channel: MessageChannel.WHATSAPP,
+        direction: message.direction.startsWith("inbound") ? "inbound" : "outbound",
+        text: message.bodyText || "",
+        at: (message.sentAt || message.createdAt).toISOString()
+      }));
+  }
+
+  const [inboundReplies, outboundMessages] = await Promise.all([
+    prisma.inboundReply.findMany({
+      where: { leadId, channel: MessageChannel.EMAIL, id: { not: currentReplyId } },
+      orderBy: { receivedAt: "desc" },
+      take: 5
+    }),
+    prisma.emailMessage.findMany({
+      where: { leadId, status: EmailMessageStatus.SENT },
+      orderBy: { sentAt: "desc" },
+      take: 5
+    })
+  ]);
+
+  return [
+    ...inboundReplies.map((reply) => ({
+      channel: MessageChannel.EMAIL,
+      direction: "inbound" as const,
+      text: `${reply.subject}\n${reply.bodyText}`,
+      at: reply.receivedAt.toISOString()
+    })),
+    ...outboundMessages.map((message) => ({
+      channel: MessageChannel.EMAIL,
+      direction: "outbound" as const,
+      text: `${message.subject}\n${message.bodyText}`,
+      at: (message.sentAt || message.createdAt).toISOString()
+    }))
+  ]
+    .sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime())
+    .slice(-5);
+}
+
+async function decidePreviewAutomation({
+  channel,
+  analysis,
+  draft,
+  settings
+}: {
+  channel: MessageChannel;
+  analysis: ReplyAnalysis;
+  draft: ReplyDraftResult;
+  settings: AiAssistantSettings;
+}) {
+  return decideAiReplyAutomation({
+    reply: {
+      id: "preview",
+      channel,
+      intent: analysis.intent,
+      aiConfidence: analysis.confidence,
+      autoReplyEligible: analysis.autoReplyEligible,
+      riskFlags: analysis.riskFlags,
+      ownerActionRequired: analysis.ownerActionRequired
+    },
+    lead: {
+      id: "preview-lead",
+      aiAutoReplyPaused: false,
+      whatsappBotPaused: false
+    },
+    draft: {
+      id: "preview-draft",
+      status: AiReplyDraftStatus.DRAFT,
+      riskFlags: draft.riskFlags
+    },
+    settings,
+    whatsappWindowOpen: true,
+    openAiConfigured: Boolean(process.env.OPENAI_API_KEY),
+    existingOwnerReviewCount: 0,
+    sentToday: 0,
+    duplicateSentDraftCount: 0
   });
 }
 

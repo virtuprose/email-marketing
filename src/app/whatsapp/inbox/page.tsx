@@ -4,7 +4,9 @@ import Link from "next/link";
 import {
   closeInboundReply,
   markInboundReplyHot,
+  pauseAiForLeadAction,
   reprocessInboundReply,
+  resumeAiForLeadAction,
   sendAiReplyDraftAction
 } from "@/app/actions";
 import { PageHeader } from "@/components/page-header";
@@ -168,6 +170,7 @@ function ReplyDetail({ reply }: { reply: ReplyDetailData | null }) {
   }
   const draft = reply.drafts?.[0];
   const canSendDraft = draft && draft.status === AiReplyDraftStatus.DRAFT;
+  const aiPaused = Boolean(reply.lead?.aiAutoReplyPaused || reply.lead?.whatsappBotPaused);
 
   return (
     <aside className="panel">
@@ -196,6 +199,10 @@ function ReplyDetail({ reply }: { reply: ReplyDetailData | null }) {
           />
           <ProfileRow label="Phone" value={reply.lead?.phoneE164 || reply.fromPhoneE164 || "Unknown"} />
           <ProfileRow label="Received" value={formatDate(reply.receivedAt)} />
+          <ProfileRow
+            label="AI for this lead"
+            value={aiPaused ? "You are handling this lead" : "AI can help"}
+          />
         </div>
 
         {reply.aiSummary ? (
@@ -250,10 +257,32 @@ function ReplyDetail({ reply }: { reply: ReplyDetailData | null }) {
             <form action={sendAiReplyDraftAction}>
               <input type="hidden" name="draftId" value={draft.id} />
               <input type="hidden" name="replyId" value={reply.id} />
+              <input type="hidden" name="returnTo" value={`/whatsapp/inbox?selected=${reply.id}`} />
               <button className="button" type="submit">
                 <Send size={16} aria-hidden="true" /> Send WhatsApp AI draft
               </button>
             </form>
+          ) : null}
+          {reply.lead ? (
+            aiPaused ? (
+              <form action={resumeAiForLeadAction}>
+                <input type="hidden" name="leadId" value={reply.lead.id} />
+                <input type="hidden" name="replyId" value={reply.id} />
+                <input type="hidden" name="returnTo" value={`/whatsapp/inbox?selected=${reply.id}`} />
+                <button className="secondary-button" type="submit">
+                  Turn AI back on
+                </button>
+              </form>
+            ) : (
+              <form action={pauseAiForLeadAction}>
+                <input type="hidden" name="leadId" value={reply.lead.id} />
+                <input type="hidden" name="replyId" value={reply.id} />
+                <input type="hidden" name="returnTo" value={`/whatsapp/inbox?selected=${reply.id}`} />
+                <button className="secondary-button" type="submit">
+                  AI off for this lead
+                </button>
+              </form>
+            )
           ) : null}
           <form action={markInboundReplyHot}>
             <input type="hidden" name="replyId" value={reply.id} />

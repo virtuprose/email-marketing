@@ -2,8 +2,11 @@ import { ArrowRight, Flame, Inbox, Send, ShieldCheck, UsersRound } from "lucide-
 import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
+import { getAiAssistantSettings } from "@/lib/ai-assistant";
+import { imapReplyInboxConfigured } from "@/lib/email-inbox";
 import { formatDate, formatNumber } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
+import { ensureDefaultSendingAccount, smtpPasswordConfigured } from "@/lib/sending";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +24,9 @@ export default async function HomePage() {
     hotLeadCount,
     approvedWhatsappTemplateCount,
     recentImports,
-    hotDeals
+    hotDeals,
+    aiSettings,
+    sendingAccount
   ] = await Promise.all([
     prisma.lead.count({
       where: { status: { notIn: ["SUPPRESSED", "UNSUBSCRIBED", "BOUNCED", "DO_NOT_CONTACT"] } }
@@ -42,10 +47,22 @@ export default async function HomePage() {
       include: { lead: true, offer: true },
       orderBy: [{ priorityScore: "desc" }, { updatedAt: "desc" }],
       take: 5
-    })
+    }),
+    getAiAssistantSettings(),
+    ensureDefaultSendingAccount()
   ]);
   const messagesToday = sentEmailToday + sentWhatsappToday;
-  const setupWarnings = approvedWhatsappTemplateCount > 0 ? 0 : 1;
+  const hotLeadEmailAlertsLive =
+    !sendingAccount.dryRun &&
+    Boolean(sendingAccount.host && sendingAccount.username && smtpPasswordConfigured());
+  const setupWarningItems = [
+    approvedWhatsappTemplateCount > 0 ? null : "Add one approved WhatsApp message.",
+    process.env.OPENAI_API_KEY ? null : "Add OpenAI key for high-quality AI replies.",
+    aiSettings.enabled && aiSettings.mode !== "PAUSED" ? null : "AI Assistant is paused.",
+    hotLeadEmailAlertsLive ? null : "Make hot lead email alerts live.",
+    imapReplyInboxConfigured() ? null : "Connect email reply inbox when email replies are needed."
+  ].filter(Boolean) as string[];
+  const setupWarnings = setupWarningItems.length;
 
   return (
     <>
@@ -95,11 +112,11 @@ export default async function HomePage() {
             note="Active outreach running in the background."
           />
           <PriorityItem
-            href="/settings"
+            href="/ai-assistant"
             icon={<ShieldCheck size={18} />}
             title="Setup warnings"
             value={setupWarnings}
-            note={setupWarnings ? "Add at least one approved WhatsApp message." : "Core setup looks ready."}
+            note={setupWarnings ? setupWarningItems[0] : "Core setup looks ready."}
           />
         </div>
       </section>

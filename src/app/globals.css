@@ -669,6 +669,16 @@ tr:last-child td {
   gap: 6px;
 }
 
+.compact-list {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  line-height: 1.5;
+}
+
+.compact-list li + li {
+  margin-top: 4px;
+}
+
 .tag {
   background: var(--bg-subtle);
   color: var(--text-default);

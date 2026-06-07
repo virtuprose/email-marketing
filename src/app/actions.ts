@@ -10,6 +10,7 @@ import {
   ImportRowStatus,
   LeadEventType,
   LeadStatus,
+  MessageChannel,
   Prisma,
   SendJobStatus,
   SuppressionReason,
@@ -37,10 +38,19 @@ import {
   ingestInboundReply,
   markReplyAsHot,
   markReplyOwnerReviewed,
+  pauseAiForLead,
+  previewAiAssistantReply,
   processInboundReply,
+  resumeAiForLead,
   sendAiReplyDraft,
   updateDealStage
 } from "@/lib/replies";
+import {
+  AI_ASSISTANT_LAST_TEST_KEY,
+  aiAssistantFormSchema,
+  saveAiAssistantSettings,
+  settingsFromForm
+} from "@/lib/ai-assistant";
 import { COMPLIANCE_SETTINGS_KEY, parseComplianceSettings } from "@/lib/settings";
 import {
   SENDING_CONTROL_SETTINGS_KEY,
@@ -118,10 +128,23 @@ const replyIdSchema = z.object({
   replyId: z.string().min(1)
 });
 
+const leadAiControlSchema = z.object({
+  leadId: z.string().min(1),
+  replyId: z.string().optional().or(z.literal("")),
+  returnTo: z.string().optional().or(z.literal(""))
+});
+
 const aiReplyDraftSchema = z.object({
   draftId: z.string().min(1),
   replyId: z.string().min(1),
-  sendingAccountId: z.string().optional().or(z.literal(""))
+  sendingAccountId: z.string().optional().or(z.literal("")),
+  returnTo: z.string().optional().or(z.literal(""))
+});
+
+const aiAssistantTestSchema = z.object({
+  channel: z.nativeEnum(MessageChannel),
+  subject: z.string().optional().or(z.literal("")),
+  bodyText: z.string().min(2)
 });
 
 const dealStageSchema = z.object({
@@ -597,6 +620,84 @@ export async function updateSendingControl(formData: FormData) {
   revalidatePath("/campaigns");
 }
 
+export async function updateAiAssistantSettings(formData: FormData) {
+  const parsed = aiAssistantFormSchema.parse({
+    enabled: formData.get("enabled") === "on",
+    mode: formData.get("mode"),
+    ownerHotLeadEmail: formData.get("ownerHotLeadEmail"),
+    whatsappEnabled: formData.get("whatsappEnabled") === "on",
+    whatsappAutoReply: formData.get("whatsappAutoReply") === "on",
+    emailEnabled: formData.get("emailEnabled") === "on",
+    emailAutoReply: formData.get("emailAutoReply") === "on",
+    autoSendMinimum: formData.get("autoSendMinimum"),
+    draftMinimum: formData.get("draftMinimum"),
+    minReplyDelaySeconds: formData.get("minReplyDelaySeconds"),
+    maxReplyDelaySeconds: formData.get("maxReplyDelaySeconds"),
+    dailyAutoReplyCap: formData.get("dailyAutoReplyCap"),
+    businessRules: formData.get("businessRules"),
+    classifier: formData.get("classifier"),
+    whatsappReply: formData.get("whatsappReply"),
+    emailReply: formData.get("emailReply"),
+    safety: formData.get("safety"),
+    companyIntro: formData.get("companyIntro"),
+    services: formData.get("services"),
+    portfolioLinks: formData.get("portfolioLinks"),
+    pricingRules: formData.get("pricingRules"),
+    faqs: formData.get("faqs"),
+    forbiddenClaims: formData.get("forbiddenClaims")
+  });
+  const settings = settingsFromForm(parsed);
+
+  await saveAiAssistantSettings(settings);
+  await prisma.auditLog.create({
+    data: {
+      action: "ai_assistant.settings_updated",
+      entityType: "settings",
+      entityId: "ai_assistant_settings",
+      metadata: { mode: settings.mode, ownerHotLeadEmail: settings.ownerHotLeadEmail }
+    }
+  });
+
+  revalidatePath("/");
+  revalidatePath("/settings");
+  revalidatePath("/ai-assistant");
+}
+
+export async function testAiAssistantReply(formData: FormData) {
+  const parsed = aiAssistantTestSchema.parse({
+    channel: formData.get("channel"),
+    subject: String(formData.get("subject") ?? "").trim(),
+    bodyText: formData.get("bodyText")
+  });
+  const result = await previewAiAssistantReply({
+    channel: parsed.channel,
+    subject: parsed.subject || "Test reply",
+    bodyText: parsed.bodyText
+  });
+
+  await prisma.setting.upsert({
+    where: { key: AI_ASSISTANT_LAST_TEST_KEY },
+    update: { value: result as unknown as Prisma.InputJsonValue },
+    create: { key: AI_ASSISTANT_LAST_TEST_KEY, value: result as unknown as Prisma.InputJsonValue }
+  });
+  await prisma.auditLog.create({
+    data: {
+      action: "ai_assistant.test_ran",
+      entityType: "settings",
+      entityId: AI_ASSISTANT_LAST_TEST_KEY,
+      metadata: {
+        channel: parsed.channel,
+        intent: result.analysis.intent,
+        confidence: result.analysis.confidence,
+        shouldAutoSend: result.decision.shouldAutoSend
+      }
+    }
+  });
+
+  revalidatePath("/ai-assistant");
+  redirect("/ai-assistant?tested=1");
+}
+
 export async function scheduleApprovedCampaign(formData: FormData) {
   const campaignId = z.string().min(1).parse(formData.get("campaignId"));
   const sendingAccountId = z.string().min(1).parse(formData.get("sendingAccountId"));
@@ -884,7 +985,8 @@ export async function sendAiReplyDraftAction(formData: FormData) {
   const parsed = aiReplyDraftSchema.parse({
     draftId: formData.get("draftId"),
     replyId: formData.get("replyId"),
-    sendingAccountId: String(formData.get("sendingAccountId") ?? "").trim()
+    sendingAccountId: String(formData.get("sendingAccountId") ?? "").trim(),
+    returnTo: String(formData.get("returnTo") ?? "").trim()
   });
 
   await sendAiReplyDraft(parsed.draftId, parsed.sendingAccountId || undefined);
@@ -893,7 +995,42 @@ export async function sendAiReplyDraftAction(formData: FormData) {
   revalidatePath("/inbox");
   revalidatePath("/pipeline");
   revalidatePath("/reports");
-  redirect(`/inbox?selected=${parsed.replyId}`);
+  revalidatePath("/whatsapp/inbox");
+  redirect(parsed.returnTo || `/inbox?selected=${parsed.replyId}`);
+}
+
+export async function pauseAiForLeadAction(formData: FormData) {
+  const parsed = leadAiControlSchema.parse({
+    leadId: formData.get("leadId"),
+    replyId: String(formData.get("replyId") ?? "").trim(),
+    returnTo: String(formData.get("returnTo") ?? "").trim()
+  });
+
+  await pauseAiForLead(parsed.leadId);
+
+  revalidatePath("/");
+  revalidatePath("/inbox");
+  revalidatePath("/whatsapp/inbox");
+  revalidatePath("/pipeline");
+  revalidatePath("/ai-assistant");
+  redirect(parsed.returnTo || `/inbox${parsed.replyId ? `?selected=${parsed.replyId}` : ""}`);
+}
+
+export async function resumeAiForLeadAction(formData: FormData) {
+  const parsed = leadAiControlSchema.parse({
+    leadId: formData.get("leadId"),
+    replyId: String(formData.get("replyId") ?? "").trim(),
+    returnTo: String(formData.get("returnTo") ?? "").trim()
+  });
+
+  await resumeAiForLead(parsed.leadId);
+
+  revalidatePath("/");
+  revalidatePath("/inbox");
+  revalidatePath("/whatsapp/inbox");
+  revalidatePath("/pipeline");
+  revalidatePath("/ai-assistant");
+  redirect(parsed.returnTo || `/inbox${parsed.replyId ? `?selected=${parsed.replyId}` : ""}`);
 }
 
 export async function markInboundReplyHot(formData: FormData) {

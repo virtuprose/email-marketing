@@ -61,4 +61,15 @@ describe("AI reply triage helpers", () => {
     expect(draft.bodyText).toContain("Approved portfolio examples");
     expect(draft.bodyText).toContain("If this is not useful");
   });
+
+  it("marks custom project scope as a hot handoff", () => {
+    const analysis = analyzeReplyLocally({
+      subject: "Project",
+      bodyText: "We have a project in mind and need an app for our ecommerce store."
+    });
+
+    expect(analysis.intent).toBe(ReplyIntent.HOT_LEAD);
+    expect(analysis.leadStatus).toBe(LeadStatus.HOT);
+    expect(analysis.ownerActionRequired).toBe(true);
+  });
 });

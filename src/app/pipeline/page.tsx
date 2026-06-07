@@ -1,7 +1,7 @@
 import { DealStage, DealStatus, Prisma } from "@prisma/client";
 import { ArrowRight, Flame, MailCheck, Target, Trophy } from "lucide-react";
 import Link from "next/link";
-import { updatePipelineDealStage } from "@/app/actions";
+import { pauseAiForLeadAction, resumeAiForLeadAction, updatePipelineDealStage } from "@/app/actions";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
 import { formatDate, formatNumber } from "@/lib/format";
@@ -178,8 +178,30 @@ function DealCard({ deal }: { deal: DealWithRelations }) {
         <ProfileRow label="Lead strength" value={`${deal.priorityScore}/100`} />
         <ProfileRow label="Where this lead stands" value={dealStatusLabels[deal.status]} />
         <ProfileRow label="Recommended next step" value={deal.nextAction || "Review manually"} />
+        <ProfileRow
+          label="AI for this lead"
+          value={deal.lead.aiAutoReplyPaused ? "You are handling this lead" : "AI can help"}
+        />
         <ProfileRow label="Updated" value={formatDate(deal.updatedAt)} />
       </div>
+
+      {deal.lead.aiAutoReplyPaused ? (
+        <form action={resumeAiForLeadAction}>
+          <input type="hidden" name="leadId" value={deal.lead.id} />
+          <input type="hidden" name="returnTo" value="/pipeline" />
+          <button className="secondary-button" type="submit">
+            Turn AI back on
+          </button>
+        </form>
+      ) : (
+        <form action={pauseAiForLeadAction}>
+          <input type="hidden" name="leadId" value={deal.lead.id} />
+          <input type="hidden" name="returnTo" value="/pipeline" />
+          <button className="secondary-button" type="submit">
+            AI off for this lead
+          </button>
+        </form>
+      )}
 
       <form action={updatePipelineDealStage} className="stack">
         <input type="hidden" name="dealId" value={deal.id} />

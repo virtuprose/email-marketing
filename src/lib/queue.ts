@@ -4,6 +4,7 @@ import type { RedisOptions } from "ioredis";
 export const FOUNDATION_QUEUE_NAME = "foundation";
 export const EMAIL_QUEUE_NAME = "email-sending";
 export const WHATSAPP_QUEUE_NAME = "whatsapp-sending";
+export const AI_REPLY_QUEUE_NAME = "ai-reply-sending";
 
 export type FoundationJobData = {
   message: string;
@@ -16,6 +17,10 @@ export type EmailSendJobData = {
 
 export type WhatsappSendJobData = {
   messageId: string;
+};
+
+export type AiReplyJobData = {
+  draftId: string;
 };
 
 export function redisConnection(): RedisOptions {
@@ -52,6 +57,13 @@ export function whatsappQueue() {
   });
 }
 
+export function aiReplyQueue() {
+  return new Queue<AiReplyJobData>(AI_REPLY_QUEUE_NAME, {
+    connection: redisConnection(),
+    defaultJobOptions: aiReplyJobOptions()
+  });
+}
+
 export function foundationJobOptions(): JobsOptions {
   return {
     attempts: 1,
@@ -69,6 +81,14 @@ export function emailJobOptions(): JobsOptions {
 }
 
 export function whatsappJobOptions(): JobsOptions {
+  return {
+    attempts: 1,
+    removeOnComplete: 500,
+    removeOnFail: 500
+  };
+}
+
+export function aiReplyJobOptions(): JobsOptions {
   return {
     attempts: 1,
     removeOnComplete: 500,

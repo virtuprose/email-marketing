@@ -5,7 +5,9 @@ import {
   closeInboundReply,
   createManualInboundReply,
   markInboundReplyHot,
+  pauseAiForLeadAction,
   reprocessInboundReply,
+  resumeAiForLeadAction,
   sendAiReplyDraftAction
 } from "@/app/actions";
 import { PageHeader } from "@/components/page-header";
@@ -268,6 +270,7 @@ function ReplyDetailPanel({
 
   const draft = reply.drafts[0];
   const canSendDraft = draft && draft.status === AiReplyDraftStatus.DRAFT && sendingAccounts.length > 0;
+  const aiPaused = Boolean(reply.lead?.aiAutoReplyPaused);
 
   return (
     <aside className="panel">
@@ -293,6 +296,10 @@ function ReplyDetailPanel({
           <ProfileRow label="Campaign" value={reply.campaign?.name || "Not matched"} />
           <ProfileRow label="Service" value={reply.campaign?.offer.name || "Not matched"} />
           <ProfileRow label="Received" value={formatDate(reply.receivedAt)} />
+          <ProfileRow
+            label="AI for this lead"
+            value={aiPaused ? "You are handling this lead" : "AI can help"}
+          />
         </div>
 
         {reply.aiSummary ? (
@@ -369,6 +376,27 @@ function ReplyDetailPanel({
           ) : null}
 
           <div className="toolbar" style={{ marginBottom: 0 }}>
+            {reply.lead ? (
+              aiPaused ? (
+                <form action={resumeAiForLeadAction}>
+                  <input type="hidden" name="leadId" value={reply.lead.id} />
+                  <input type="hidden" name="replyId" value={reply.id} />
+                  <input type="hidden" name="returnTo" value={`/inbox?selected=${reply.id}`} />
+                  <button className="secondary-button" type="submit">
+                    Turn AI back on
+                  </button>
+                </form>
+              ) : (
+                <form action={pauseAiForLeadAction}>
+                  <input type="hidden" name="leadId" value={reply.lead.id} />
+                  <input type="hidden" name="replyId" value={reply.id} />
+                  <input type="hidden" name="returnTo" value={`/inbox?selected=${reply.id}`} />
+                  <button className="secondary-button" type="submit">
+                    AI off for this lead
+                  </button>
+                </form>
+              )
+            ) : null}
             <form action={markInboundReplyHot}>
               <input type="hidden" name="replyId" value={reply.id} />
               <button className="secondary-button" type="submit">
