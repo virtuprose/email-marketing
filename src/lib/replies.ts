@@ -110,7 +110,7 @@ const analysisSchema = z.object({
 });
 
 const draftSchema = z.object({
-  subject: z.string().min(3),
+  subject: z.string(),
   bodyText: z.string().min(15),
   confidence: z.number().int().min(0).max(100),
   rationale: z.string().min(5),
