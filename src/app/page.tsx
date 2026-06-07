@@ -58,7 +58,7 @@ export default async function HomePage() {
             <Link className="secondary-button" href="/leads/import">
               Add Leads <UsersRound size={16} aria-hidden="true" />
             </Link>
-            <Link className="button" href="/campaigns/new">
+            <Link className="button" href="/campaigns">
               Create Campaign <ArrowRight size={16} aria-hidden="true" />
             </Link>
           </>

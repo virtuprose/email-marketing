@@ -1,6 +1,6 @@
 "use client";
 
-import { CircleHelp, Flame, Home, Inbox, Send, Settings, UsersRound } from "lucide-react";
+import { CircleHelp, Flame, Home, Inbox, MessageCircle, Send, Settings, UsersRound } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
@@ -10,6 +10,7 @@ const navItems = [
   { href: "/", label: "Home", icon: Home, exact: true },
   { href: "/leads", label: "Add Leads", icon: UsersRound },
   { href: "/campaigns", label: "Campaigns", icon: Send },
+  { href: "/whatsapp", label: "WhatsApp", icon: MessageCircle },
   { href: "/inbox", label: "Replies", icon: Inbox },
   { href: "/pipeline", label: "Hot Leads", icon: Flame },
   { href: "/faq", label: "Help", icon: CircleHelp },

@@ -38,8 +38,11 @@ export default async function CampaignsPage() {
             <Link className="secondary-button" href="/whatsapp/templates">
               Message Templates
             </Link>
-            <Link className="button" href="/campaigns/new">
-              <Plus size={16} aria-hidden="true" /> Create Campaign
+            <Link className="secondary-button" href="/campaigns/new">
+              Create Email
+            </Link>
+            <Link className="button" href="/whatsapp/campaigns/new">
+              <Plus size={16} aria-hidden="true" /> Create WhatsApp
             </Link>
           </>
         }
