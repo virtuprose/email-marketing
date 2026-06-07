@@ -1,6 +1,6 @@
 # Virtuprose Sales Assistant VPS Deployment
 
-Last updated: 2026-06-07
+Last updated: 2026-06-08
 
 This document records the current VPS deployment for the internal Virtuprose Sales Assistant.
 
@@ -23,7 +23,7 @@ Do not commit the credential note or any `.env` file.
 The VPS runs this app as four Docker services:
 
 - `app`: Next.js dashboard and API routes.
-- `worker`: BullMQ worker for email and WhatsApp queues.
+- `worker`: BullMQ worker for email sends, WhatsApp sends, AI replies, and optional IMAP reply polling.
 - `postgres`: production app database.
 - `redis`: queue and worker state.
 
@@ -92,12 +92,20 @@ Configured on the VPS:
 - `META_WEBHOOK_VERIFY_TOKEN`
 - `META_VALIDATE_SIGNATURE=true`
 - `META_WHATSAPP_DRY_RUN=false`
+- `OPENAI_API_KEY`
+- `OPENAI_CAMPAIGN_MODEL=gpt-4.1-mini`
+- `OPENAI_REPLY_MODEL=gpt-4.1-mini`
 
 Missing or pending:
 
 - `SMTP_PASS`
 - `SMTP_PASSWORD`
-- Meta webhook callback configured in Meta App Dashboard
+- `IMAP_HOST`
+- `IMAP_USER`
+- `IMAP_PASS`
+- Real owner hot-lead alert email delivery until SMTP is configured
+- Automatic email reply receiving until IMAP is configured
+- Confirm Meta webhook callback and message/status subscriptions in Meta App Dashboard
 
 ## Current Access
 
@@ -161,13 +169,16 @@ rsync -az --delete \
   /Users/muhammadzaid/Documents/email-marketing/ \
   root@31.97.213.79:/opt/virtuprose-sales-assistant/
 
-ssh root@31.97.213.79 'cd /opt/virtuprose-sales-assistant && docker compose --env-file .env.production -p virtuprose-sales-assistant -f docker-compose.production.yml up -d --build'
+ssh root@31.97.213.79 'cd /opt/virtuprose-sales-assistant && docker compose --env-file .env.production -p virtuprose-sales-assistant -f docker-compose.production.yml up -d --build app worker'
 ```
 
 ## Important Production Notes
 
 - `META_WHATSAPP_DRY_RUN=false` means WhatsApp sends are live.
 - Do not start bulk sending until a single test lead/template flow is verified.
-- Inbound WhatsApp replies and AI auto-replies require Meta App Dashboard webhook setup.
+- Inbound WhatsApp replies and AI auto-replies require Meta App Dashboard webhook setup and message/status subscriptions.
 - AI classification and AI reply drafting are configured with `gpt-4.1-mini`; test one live reply before relying on automation.
+- The AI reply queue is `ai-reply-sending`; confirm worker logs show this queue is ready after deploy.
+- Owner hot-lead alerts are addressed to `moh@virtuprose.com`, but real delivery requires live SMTP credentials and email dry-run off.
+- Automatic email reply receiving requires IMAP credentials and a worker restart.
 - Email sending requires SMTP credentials and domain deliverability setup.

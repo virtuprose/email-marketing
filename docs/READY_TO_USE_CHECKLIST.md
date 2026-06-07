@@ -23,6 +23,7 @@ Current VPS deployment:
 - Set conservative caps first: low daily cap, low per-minute cap, and per-domain cap.
 - Confirm `SMTP_PASS` is present before disabling dry-run.
 - Run a test send and confirm mailbox receipt, not only a successful API response.
+- Confirm owner hot-lead alert emails reach `moh@virtuprose.com` before relying on alerts.
 
 ## WhatsApp Cloud API
 
@@ -42,7 +43,8 @@ Current status on VPS:
 
 - Meta credentials are set.
 - `META_WHATSAPP_DRY_RUN` is currently `false`, so WhatsApp sends are live.
-- HTTPS is active; Meta App Dashboard webhook setup is still pending.
+- HTTPS is active.
+- Confirm Meta App Dashboard is subscribed to message and status events at `https://sales.virtuprose.com/api/webhooks/meta/whatsapp`.
 
 ## Domain And Compliance
 
@@ -53,15 +55,28 @@ Current status on VPS:
 - Suppression list is checked before every queued send.
 - Lead source, country, and legal basis are stored before campaign approval.
 
-## AI Inbox
+## AI Assistant And Replies
 
-- OpenAI is configured; test one inbound reply before enabling any hands-off AI replies.
+- OpenAI is configured; test one inbound reply before trusting hands-off AI replies.
+- Open `/ai-assistant` and confirm the mode is correct:
+  - **Auto Safe**: AI sends only safe high-confidence replies.
+  - **Draft Only**: AI drafts but waits for owner approval.
+  - **Test Mode**: AI classifies and drafts but never sends.
+  - **Paused**: AI stores replies without drafting or sending.
+- Confirm the owner alert email is `moh@virtuprose.com`.
+- Confirm prompts and the knowledge base contain only approved services, portfolio links, pricing rules, FAQs, and forbidden claims.
+- Confirm auto-reply safety rules are visible: confidence threshold, reply delay, daily cap, WhatsApp 24-hour window, and handoff intents.
+- Test AI with a safe sample reply and a pricing/meeting sample reply.
+- Safe sample should draft or auto-send only if Auto Safe rules pass.
+- Pricing/meeting sample should hand off to the owner and not invent prices.
 - Paste replies into `/inbox` while inbound routing is not connected.
 - If using a provider inbound parser, set `INBOUND_WEBHOOK_SECRET`.
 - Connect provider inbound parser to `/api/inbound/replies`.
-- Review AI drafts manually before sending.
+- For automatic email reply receiving, configure `IMAP_HOST`, `IMAP_USER`, and `IMAP_PASS`, then restart the worker.
+- Review AI drafts manually unless Auto Safe behavior has been tested end to end.
 - Do not send AI replies to unsubscribe, complaint, suppressed, or do-not-contact leads.
 - Hot replies should be handled personally from the pipeline.
+- Use **AI off for this lead** when the owner has taken over a conversation.
 
 ## Operating Rule
 

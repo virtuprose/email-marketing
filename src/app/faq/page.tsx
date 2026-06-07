@@ -30,7 +30,7 @@ const faqSections: FaqSection[] = [
             <p>
               This is your <strong>internal Virtuprose Sales Assistant</strong>. You bring leads, choose the
               service, approve the campaign, and let the system handle safe sending, reply review, AI drafts,
-              scoring, and hot-lead handoff.
+              safe auto-replies, scoring, and hot-lead handoff.
             </p>
             <p>
               The platform is built for <strong>one owner</strong>, not for public SaaS billing or team
@@ -53,8 +53,9 @@ const faqSections: FaqSection[] = [
             <li>Create a campaign, review the message, and fix safety warnings.</li>
             <li>Approve the campaign and start sending slowly.</li>
             <li>Keep the sending worker running so campaign messages can process.</li>
-            <li>Paste replies into Replies, or connect automatic reply capture later.</li>
-            <li>Review AI classification and draft replies.</li>
+            <li>Open AI Assistant and choose Auto Safe, Draft Only, Test Mode, or Paused.</li>
+            <li>Paste replies into Replies, or connect automatic WhatsApp/email reply capture.</li>
+            <li>Review AI classification, draft replies, and safe auto-reply decisions.</li>
             <li>Handle hot leads yourself.</li>
           </ol>
         )
@@ -69,6 +70,10 @@ const faqSections: FaqSection[] = [
             <li>
               <strong>Settings:</strong> confirm test mode, business profile, reply-to, and pause sending
               state.
+            </li>
+            <li>
+              <strong>AI Assistant:</strong> confirm reply mode, owner alert email, prompts, and approved
+              knowledge.
             </li>
             <li>
               <strong>Replies:</strong> review new replies before sending any AI draft.
@@ -266,8 +271,8 @@ const faqSections: FaqSection[] = [
     ]
   },
   {
-    title: "AI Inbox And Replies",
-    description: "How replies become AI-reviewed tasks, drafts, and hot leads.",
+    title: "AI Assistant And Replies",
+    description: "How replies become AI-reviewed tasks, safe replies, and hot leads.",
     items: [
       {
         question: "How do replies enter the platform?",
@@ -277,22 +282,60 @@ const faqSections: FaqSection[] = [
               <strong>Manual mode:</strong> paste the reply into Replies.
             </li>
             <li>
-              <strong>Automatic mode:</strong> connect an inbound email parser to{" "}
-              <code>/api/inbound/replies</code>
-              with the <code>x-inbound-secret</code> header.
+              <strong>WhatsApp mode:</strong> replies arrive through the Meta WhatsApp webhook when the app is
+              subscribed to message events.
+            </li>
+            <li>
+              <strong>Email inbox mode:</strong> connect IMAP so the worker can read unread replies
+              automatically.
+            </li>
+            <li>
+              <strong>Email webhook mode:</strong> connect an inbound email parser to{" "}
+              <code>/api/inbound/replies</code> with the <code>x-inbound-secret</code> header.
+            </li>
+          </ul>
+        )
+      },
+      {
+        question: "What are the AI Assistant modes?",
+        defaultOpen: true,
+        answer: (
+          <ul className="faq-list">
+            <li>
+              <strong>Auto Safe:</strong> AI can send only safe, high-confidence replies after all checks
+              pass.
+            </li>
+            <li>
+              <strong>Draft Only:</strong> AI writes drafts, but waits for you.
+            </li>
+            <li>
+              <strong>Test Mode:</strong> AI classifies and drafts, but never sends.
+            </li>
+            <li>
+              <strong>Paused:</strong> replies are saved, but AI does not draft or send.
             </li>
           </ul>
         )
       },
       {
         question: "What does the AI do with each reply?",
-        defaultOpen: true,
         answer: (
           <p>
             The AI classifies intent, sentiment, confidence, summary, suggested next action, and lead score.
             It can identify <strong>meeting requests</strong>, <strong>pricing questions</strong>,
             <strong>portfolio requests</strong>, objections, not-interested replies, unsubscribe requests,
             complaints, and unclear replies.
+          </p>
+        )
+      },
+      {
+        question: "When will AI auto-reply?",
+        answer: (
+          <p>
+            AI auto-replies only in <strong>Auto Safe</strong> mode when the message is safe, confidence is
+            high, the lead is not blocked, daily limits are available, the reply is not a duplicate, and
+            WhatsApp is still inside the 24-hour reply window. If any check fails, the AI creates a draft
+            instead.
           </p>
         )
       },
@@ -319,12 +362,21 @@ const faqSections: FaqSection[] = [
         )
       },
       {
-        question: "Can AI send replies automatically?",
+        question: "How do I stop AI for one lead?",
         answer: (
           <p>
-            The system can generate and send an AI draft from the inbox, but you should treat this as a
-            <strong>review-first workflow</strong>. Keep auto-reply behavior conservative. Do not send AI
-            replies to unsubscribes, complaints, suppressed leads, or do-not-contact leads.
+            Click <strong>AI off for this lead</strong> in Replies, WhatsApp Inbox, or Hot Leads. The platform
+            will show that you are handling the lead, and AI will stop auto-replying to that person.
+          </p>
+        )
+      },
+      {
+        question: "How do hot lead email alerts work?",
+        answer: (
+          <p>
+            When AI detects a hot lead, pricing request, meeting request, proposal request, or strong custom
+            scope request, it hands the lead to you and sends an owner alert to{" "}
+            <strong>moh@virtuprose.com</strong>. Real alert delivery needs live SMTP settings.
           </p>
         )
       }
@@ -514,7 +566,10 @@ export default function FaqPage() {
               <p className="muted">Use these as the operating baseline.</p>
             </div>
             <Rule label="Test first" detail="Never start real volume before test delivery is proven." />
-            <Rule label="Review AI" detail="AI drafts help you move faster, but owner review stays safest." />
+            <Rule
+              label="Use Auto Safe carefully"
+              detail="AI can reply only when confidence and safety checks pass."
+            />
             <Rule label="Stop after reply" detail="A real reply moves the lead into Replies." />
             <Rule
               label="Respect opt-outs"

@@ -1,6 +1,6 @@
 # Virtuprose AI Email Sales Agent
 
-Internal single-user product for importing leads, managing suppression/compliance data, preparing Virtuprose offers, generating reviewed AI-assisted email campaign drafts, sending compliant email campaigns, and running Meta WhatsApp Cloud API template campaigns with AI reply qualification.
+Internal single-user product for importing leads, managing suppression/compliance data, preparing Virtuprose offers, generating reviewed AI-assisted email campaign drafts, sending compliant email campaigns, running Meta WhatsApp Cloud API template campaigns, and using an AI sales assistant to classify, draft, safely auto-reply, and hand off hot leads.
 
 ## Current Deployment
 
@@ -59,6 +59,12 @@ OPENAI_API_KEY=""
 OPENAI_CAMPAIGN_MODEL="gpt-4.1-mini"
 OPENAI_REPLY_MODEL="gpt-4.1-mini"
 INBOUND_WEBHOOK_SECRET=""
+IMAP_HOST=""
+IMAP_PORT="993"
+IMAP_USER=""
+IMAP_PASS=""
+IMAP_SECURE="true"
+EMAIL_REPLY_POLL_SECONDS="60"
 SMTP_PASS=""
 META_GRAPH_API_VERSION="v25.0"
 META_WHATSAPP_ACCESS_TOKEN=""
@@ -91,7 +97,7 @@ curl http://localhost:3000/api/health
 - Lead activity timeline
 - Import result review
 
-Campaign sending, WhatsApp Cloud API, AI reply workflow hooks, owner-friendly UI, and deployment are now implemented. Some production operations still need configuration, especially OpenAI, HTTPS webhooks, and SMTP.
+Campaign sending, WhatsApp Cloud API, the AI Assistant control center, owner-friendly UI, and VPS deployment are implemented. Production still needs SMTP credentials for real email sends and owner alert emails, plus IMAP credentials for automatic email reply receiving.
 
 ## Campaign Scope
 
@@ -119,17 +125,22 @@ Email sending infrastructure exists, but production email sending still needs SM
 
 Do not disable dry-run for production until SPF, DKIM, DMARC, mailbox warmup, and test-inbox delivery are verified.
 
-## AI Inbox And Hot Lead Scope
+## AI Assistant And Hot Lead Scope
 
-- AI inbox for manual reply import and webhook reply ingestion
-- Reply classification into hot lead, pricing request, meeting request, proof request, objection, not interested, unsubscribe, complaint, and unclear
-- AI reply drafts with local fallback when `OPENAI_API_KEY` is not configured
-- Reply-safe suppression handling for unsubscribe and complaint language
-- Automatic stopping of queued follow-ups after a lead replies
-- Hot-lead scoring with fit, engagement, and intent scores
-- Lightweight deal pipeline created from replies
-- Reports for sends, replies, hot replies, source quality, and campaign performance
-- Inbound webhook endpoint protected by `INBOUND_WEBHOOK_SECRET`
+- `/ai-assistant` control center for reply mode, prompts, knowledge base, safety rules, activity, and test classification.
+- Reply modes: Auto Safe, Draft Only, Test Mode, and Paused.
+- Auto Safe replies only send when confidence, safety, channel, service-window, daily-cap, duplicate, and owner-takeover checks pass.
+- Reply classification into hot lead, pricing request, meeting request, proof request, objection, not interested, unsubscribe, complaint, and unclear.
+- Conversation memory includes recent same-channel messages so drafts are not context blind.
+- Lead-level **AI off for this lead** takeover is available in Replies, WhatsApp Inbox, and Hot Leads.
+- Hot-lead, pricing, and meeting intent trigger owner handoff and an owner alert email to `moh@virtuprose.com` when SMTP is live.
+- Reply-safe suppression handling for unsubscribe and complaint language.
+- Automatic stopping of queued follow-ups after a lead replies.
+- Hot-lead scoring with fit, engagement, and intent scores.
+- Lightweight deal pipeline created from replies.
+- `ai-reply-sending` worker queue handles delayed AI auto-replies.
+- IMAP polling for email replies is implemented, but only starts after `IMAP_HOST`, `IMAP_USER`, and `IMAP_PASS` are configured.
+- Inbound webhook endpoint remains available as an advanced fallback and is protected by `INBOUND_WEBHOOK_SECRET`.
 
 ## Ready-To-Use Internal Workflow
 
@@ -152,10 +163,11 @@ Body: {
 }
 ```
 
-8. Review the AI draft and send it manually from the inbox. In dry-run mode, this records the send without contacting SMTP.
-9. Work hot leads from `/pipeline` and mark outcomes as won, lost, proposal sent, or follow-up later.
+8. Open `/ai-assistant`, keep **Auto Safe** or switch to **Draft Only**, and verify the prompts/knowledge base before live reply testing.
+9. Review the AI draft or safe auto-reply decision from Replies. In email dry-run mode, this records the send without contacting SMTP.
+10. Work hot leads from `/pipeline` and mark outcomes as won, lost, proposal sent, or follow-up later.
 
-For real email sending, configure a real reply-to inbox, set `SMTP_PASS`/`SMTP_PASSWORD`, disable dry-run only after test delivery is confirmed, and keep the worker running.
+For real email sending and hot-lead alert emails, configure a real reply-to inbox, set `SMTP_PASS`/`SMTP_PASSWORD`, disable dry-run only after test delivery is confirmed, and keep the worker running. For automatic email reply receiving, set the IMAP variables and restart the worker.
 
 ## WhatsApp Cloud API Scope
 
@@ -164,7 +176,7 @@ For real email sending, configure a real reply-to inbox, set `SMTP_PASS`/`SMTP_P
 - WhatsApp campaign builder with offer, audience, template, variable mapping, caps, send window, and owner approval.
 - `whatsapp-sending` BullMQ queue for template campaigns.
 - Meta webhook route at `/api/webhooks/meta/whatsapp`.
-- AI classification and reply drafting for inbound WhatsApp replies inside the 24-hour service window.
+- AI classification, drafting, and conservative Auto Safe replies for inbound WhatsApp replies inside the 24-hour service window.
 - STOP/unsubscribe/complaint handling blocks future WhatsApp sends.
 
 Current handoff details, Meta setup notes, and operational runbooks are in [`docs/DEVELOPER_HANDOFF.md`](docs/DEVELOPER_HANDOFF.md).

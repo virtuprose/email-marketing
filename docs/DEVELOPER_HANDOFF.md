@@ -1,14 +1,20 @@
 # Virtuprose Email + WhatsApp Agent Developer Handoff
 
-Last updated: 2026-06-07
+Last updated: 2026-06-08
 
-This project is an internal, single-owner Virtuprose platform for lead import, compliant outbound email, Meta WhatsApp template campaigns, AI reply drafting/classification, and hot-lead handoff. It is not a public SaaS yet. Build decisions should optimize for reliable owner use, compliance, and sender reputation before scale.
+This project is an internal, single-owner Virtuprose platform for lead import, compliant outbound email, Meta WhatsApp template campaigns, AI Assistant reply handling, and hot-lead handoff. It is not a public SaaS yet. Build decisions should optimize for reliable owner use, compliance, and sender reputation before scale.
 
 ## Current Status
 
 - Next.js App Router dashboard is implemented for leads, offers, email campaigns, inbox, pipeline, reports, settings, FAQ, and WhatsApp.
 - Prisma/Postgres stores leads, suppression, campaigns, messages, events, AI generations, deals, WhatsApp templates, WhatsApp campaigns, WhatsApp messages, and WhatsApp events.
 - Redis/BullMQ backs outbound email and WhatsApp send jobs.
+- AI Assistant is implemented at `/ai-assistant` for reply mode, prompts, knowledge base, safety rules, activity logs, and test classification.
+- The AI reply worker queue is `ai-reply-sending`.
+- Default AI mode is **Auto Safe**: safe high-confidence replies may send after delay; hot/risky/unclear replies hand off to the owner.
+- Lead-level owner takeover is available through **AI off for this lead** in Replies, WhatsApp Inbox, and Hot Leads.
+- Hot lead owner alert email target is `moh@virtuprose.com`.
+- IMAP polling for email reply receiving is implemented but only runs when IMAP env vars are configured.
 - Meta WhatsApp Cloud API is the active WhatsApp provider. Twilio WhatsApp was removed as a runtime provider.
 - Local `.env` has real Meta credentials on the developer machine. Do not commit `.env`.
 - The current Meta WhatsApp Business Account is `Virtuprose Solutions`.
@@ -25,8 +31,9 @@ This project is an internal, single-owner Virtuprose platform for lead import, c
 - Production credentials are stored in `/opt/virtuprose-sales-assistant/.env.production` on the VPS and must never be committed.
 - Owner login details are saved locally in `/Users/muhammadzaid/.codex/virtuprose-sales-assistant-vps-credentials.txt`.
 - `OPENAI_API_KEY` is configured on the VPS.
-- SMTP passwords are currently missing on the VPS, so production email sending is pending.
-- HTTPS is configured at `https://sales.virtuprose.com`; Meta App Dashboard webhook configuration is still pending.
+- SMTP passwords are currently missing on the VPS, so production email sending and real hot-lead alert emails are pending.
+- IMAP credentials are currently missing on the VPS, so automatic email reply receiving is pending.
+- HTTPS is configured at `https://sales.virtuprose.com`; confirm the Meta App Dashboard webhook is still subscribed to message and status events after each app or WABA change.
 
 ## Architecture
 
@@ -43,15 +50,20 @@ flowchart LR
   WAQueue --> Meta["Meta WhatsApp Cloud API"]
   Meta --> Webhooks["/api/webhooks/meta/whatsapp"]
   Webhooks --> Inbox["Inbox + AI classification"]
+  Inbox --> AI["AI Assistant rules + ai-reply-sending queue"]
+  AI --> Inbox
   Inbox --> Pipeline["Hot lead pipeline"]
+  AI --> Alert["Owner hot-lead alert email"]
 ```
 
 Important boundaries:
 
 - `src/lib/whatsapp.ts` owns Meta Cloud API payloads, webhook verification, WhatsApp campaign queueing, consent gates, and provider send logic.
-- `src/lib/replies.ts` owns inbound reply ingestion, AI reply classification/drafting, suppression detection, and deal creation.
-- `src/lib/queue.ts` owns BullMQ queue factories.
-- `src/worker/index.ts` processes queued email and WhatsApp sends.
+- `src/lib/replies.ts` owns inbound reply ingestion, AI classification/drafting, conversation memory, suppression detection, AI auto-reply execution, and deal creation.
+- `src/lib/ai-assistant.ts` owns AI settings defaults, safe auto-reply decisioning, delayed queue scheduling, owner hot-lead alerts, and AI activity logs.
+- `src/lib/email-inbox.ts` owns IMAP polling for inbound email replies.
+- `src/lib/queue.ts` owns BullMQ queue factories, including `ai-reply-sending`.
+- `src/worker/index.ts` processes queued email sends, WhatsApp sends, AI replies, and optional IMAP polling.
 - `src/app/actions.ts` contains dashboard server actions for templates, campaigns, settings, sends, and inbox workflows.
 - `src/app/api/webhooks/meta/whatsapp/route.ts` handles Meta webhook verification and inbound/status callbacks.
 
@@ -95,6 +107,12 @@ OPENAI_API_KEY=""
 OPENAI_CAMPAIGN_MODEL="gpt-4.1-mini"
 OPENAI_REPLY_MODEL="gpt-4.1-mini"
 INBOUND_WEBHOOK_SECRET=""
+IMAP_HOST=""
+IMAP_PORT="993"
+IMAP_USER=""
+IMAP_PASS=""
+IMAP_SECURE="true"
+EMAIL_REPLY_POLL_SECONDS="60"
 SMTP_PASS=""
 SMTP_PASSWORD=""
 ```
@@ -202,7 +220,72 @@ curl "https://graph.facebook.com/v25.0/$META_WABA_ID/message_templates?fields=id
 - `STOP`, unsubscribe-style language, complaints, and do-not-contact states suppress future WhatsApp sends.
 - Free-form AI replies are allowed only inside the 24-hour customer service window after an inbound customer message.
 - AI should hand off hot, risky, unclear, pricing, proposal, or meeting-intent conversations to the owner.
+- AI Auto Safe replies are allowed only when the AI Assistant decision engine approves the channel, confidence, safety, duplicate, cap, owner-takeover, and service-window checks.
 - Start with low caps, for example 25/day, then increase only after quality and delivery are stable.
+
+## AI Assistant Runbook
+
+Primary page:
+
+```text
+/ai-assistant
+```
+
+Stored settings:
+
+```text
+settings.key = ai_assistant_settings
+```
+
+Default behavior:
+
+- **Auto Safe** is on by default.
+- Minimum auto-send confidence is `90`.
+- Draft minimum confidence is `60`.
+- Natural reply delay is `30-120` seconds.
+- Daily AI auto-reply cap is `100`.
+- Owner hot-lead alerts go to `moh@virtuprose.com`.
+
+Auto-send is blocked when any of these are true:
+
+- AI Assistant is disabled, paused, in Draft Only, or in Test Mode.
+- Channel auto-reply is disabled.
+- OpenAI is missing.
+- Confidence is below the auto-send threshold.
+- Intent is hot lead, meeting request, pricing request, complaint, unsubscribe, or unclear.
+- Risk flags are present.
+- The lead is suppressed, stopped, or marked do-not-contact.
+- The owner clicked **AI off for this lead**.
+- Daily cap is reached.
+- Duplicate reply protection finds a previous AI send for the same turn.
+- WhatsApp is outside the 24-hour customer service window.
+
+When blocked, the system creates a draft, logs the reason, and leaves the reply for owner review.
+
+Conversation memory passed to AI:
+
+- Current inbound reply.
+- Last 5 same-channel messages from the lead.
+- Lead details and current stage.
+- Service/offer context when available.
+- Last AI reply when available.
+- Owner takeover state.
+
+AI may only answer from approved service records and the AI Assistant knowledge base. If the user asks for unsupported pricing, availability, guarantees, custom scope, or anything risky, AI must hand off instead of inventing.
+
+Owner alert email behavior:
+
+- Triggered for hot lead, pricing request, meeting request, proposal request, or high-intent custom scope.
+- Deduped per inbound reply.
+- Logged as `ai_assistant.hot_lead_alert_sent` or `ai_assistant.hot_lead_alert_failed`.
+- Requires live SMTP settings; until then, the dashboard warns that alerts are not live.
+
+Email reply receiving:
+
+- IMAP polling starts only when `IMAP_HOST`, `IMAP_USER`, and `IMAP_PASS` are set.
+- Poll interval defaults to `EMAIL_REPLY_POLL_SECONDS=60`.
+- Processed email replies are passed into the same `ingestInboundReply` workflow used by webhooks.
+- `/api/inbound/replies` remains available for provider webhooks or manual integrations.
 
 ## Webhooks
 
@@ -230,6 +313,13 @@ https://<public-domain>/api/webhooks/meta/whatsapp
 ```
 
 Subscribe to message and status events for the WABA.
+
+Email inbound fallback:
+
+```text
+POST /api/inbound/replies
+Header: x-inbound-secret: <INBOUND_WEBHOOK_SECRET>
+```
 
 ## Testing And Verification
 
@@ -265,6 +355,12 @@ NODE
 
 ## Data Model Highlights
 
+Lead AI control fields:
+
+- `aiAutoReplyPaused`
+- `aiAutoReplyPausedAt`
+- `aiAutoReplyPauseReason`
+
 Lead WhatsApp fields:
 
 - `phoneE164`
@@ -296,10 +392,10 @@ Provider mapping:
 ## Current Known Gaps
 
 - A permanent System User token should replace the dashboard-generated user token before unattended production use.
-- Webhooks need a public HTTPS URL before inbound replies and AI WhatsApp auto-replies can work end to end.
-- OpenAI is configured; one live inbound reply should be tested before trusting auto-replies.
-- SMTP credentials must be added before production email sending.
-- Meta App Dashboard must be pointed to `https://sales.virtuprose.com/api/webhooks/meta/whatsapp`.
+- Confirm Meta App Dashboard is subscribed to message and status events at `https://sales.virtuprose.com/api/webhooks/meta/whatsapp`.
+- One live inbound WhatsApp reply should be tested before trusting auto-replies.
+- SMTP credentials must be added before production email sending and owner hot-lead alert emails.
+- IMAP credentials must be added before automatic email reply receiving.
 - Payment method and message limits should be confirmed in WhatsApp Manager before volume.
 - Old Twilio-specific secrets should stay removed from `.env.example` and should never be committed.
 - The current dashboard is single-user and protected by Basic Auth, not multi-user role-based auth.
