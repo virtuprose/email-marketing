@@ -1366,7 +1366,8 @@ async function analyzeReplyWithAiFallback(
     if (!response.ok) throw new Error(`OpenAI reply analysis failed with ${response.status}`);
     const data = (await response.json()) as unknown;
     return analysisSchema.parse(JSON.parse(extractOutputText(data)));
-  } catch {
+  } catch (error) {
+    console.error("OpenAI reply analysis failed; using local fallback.", error);
     return {
       ...fallback,
       riskFlags: [...fallback.riskFlags, "OpenAI reply analysis was unavailable; local fallback used."]
@@ -1471,7 +1472,8 @@ async function generateReplyDraftWithAiFallback({
       model,
       ...parsed
     };
-  } catch {
+  } catch (error) {
+    console.error("OpenAI reply draft failed; using local fallback.", error);
     return {
       ...fallback,
       riskFlags: [...fallback.riskFlags, "OpenAI reply draft was unavailable; local fallback used."]

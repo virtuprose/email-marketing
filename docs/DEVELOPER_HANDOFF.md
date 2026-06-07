@@ -252,7 +252,7 @@ settings.key = ai_assistant_settings
 Default behavior:
 
 - **Auto Safe** is on by default.
-- Minimum auto-send confidence is `90`.
+- Minimum auto-send confidence is `85`.
 - Draft minimum confidence is `60`.
 - Natural reply delay is `30-120` seconds.
 - Daily AI auto-reply cap is `100`.

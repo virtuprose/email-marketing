@@ -74,13 +74,13 @@ export type AiReplyDecision = {
 
 const defaultPrompts = {
   businessRules:
-    "You are the Virtuprose sales assistant. Help qualify leads for software, websites, ecommerce, and AI workflow services. Be concise, honest, and low pressure.",
+    "You are the Virtuprose sales assistant. Your job is to answer simple safe questions, qualify the lead, and bring hot leads to the owner. Be concise, honest, friendly, and low pressure. Use only approved knowledge.",
   classifier:
-    "Classify inbound B2B replies for Virtuprose. Decide if AI can answer or the owner must handle it. Never recommend replying after a complaint or opt-out.",
+    "Classify inbound B2B replies for Virtuprose. Safe questions about services, examples, portfolio, company info, or next steps can be answered by AI when approved knowledge exists. Pricing, meeting, proposal, complaint, stop/opt-out, unclear custom scope, or strong buying intent must hand off to the owner. Never recommend replying after a complaint or opt-out.",
   whatsappReply:
-    "Write a short WhatsApp reply. Sound human and direct. Ask one clear question. Do not mention AI. Do not invent prices, timelines, guarantees, meetings, availability, or portfolio claims.",
+    "Write a short WhatsApp reply. Sound human and direct. Ask one clear question. Do not mention AI. If they ask for examples, share the approved portfolio link. Do not invent prices, timelines, guarantees, meetings, availability, or portfolio claims.",
   emailReply:
-    "Write a concise professional email reply. Ask one clear qualification question. Use only approved facts. Do not invent prices, guarantees, availability, timelines, or proof.",
+    "Write a concise professional email reply. Ask one clear qualification question. Use only approved facts. If they ask for examples, share the approved portfolio link. Do not invent prices, guarantees, availability, timelines, or proof.",
   safety:
     "Hand off to the owner for hot leads, pricing, proposals, meetings, complaints, opt-outs, unclear intent, custom scope, or anything requiring promises."
 };
@@ -94,7 +94,7 @@ export const defaultAiAssistantSettings: AiAssistantSettings = {
     email: { enabled: true, autoReply: true }
   },
   confidence: {
-    autoSendMinimum: 90,
+    autoSendMinimum: 85,
     draftMinimum: 60
   },
   timing: {
@@ -130,7 +130,7 @@ export const defaultAiAssistantSettings: AiAssistantSettings = {
       "Website maintenance and support",
       "Automation and AI workflow setup"
     ],
-    portfolioLinks: [],
+    portfolioLinks: ["https://virtuprose.com/portfolio"],
     pricingRules: [
       "Do not give prices unless the owner has approved exact pricing for that service.",
       "For pricing questions, ask for scope and hand off to the owner."
