@@ -160,6 +160,10 @@ select {
   color: #c8c2b8;
 }
 
+.sidebar-note {
+  max-width: 100%;
+}
+
 .main {
   min-width: 0;
   padding: 32px;
@@ -230,6 +234,29 @@ h3 {
   flex-wrap: wrap;
   gap: 10px;
   margin-bottom: 18px;
+}
+
+.section-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.section-tab {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  padding: 10px 13px;
+  font-size: 14px;
+  font-weight: 720;
+}
+
+.section-tab-active {
+  background: var(--text-strong);
+  border-color: var(--text-strong);
+  color: white;
 }
 
 .button,
@@ -309,8 +336,77 @@ h3 {
   gap: 14px;
 }
 
+.panel-summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  cursor: pointer;
+  padding: 18px;
+  list-style: none;
+}
+
+.panel-summary::-webkit-details-marker {
+  display: none;
+}
+
+.advanced-settings:not([open]) .panel-summary {
+  padding-bottom: 18px;
+}
+
+.advanced-settings[open] .panel-summary {
+  border-bottom: 1px solid var(--border-subtle);
+}
+
 .panel-body {
   padding: 18px;
+}
+
+.attention-panel {
+  border-color: #c9ddd7;
+}
+
+.priority-list {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.priority-item {
+  min-width: 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 10px;
+  background: #fbfaf7;
+}
+
+.priority-item:hover,
+.priority-item:focus-visible {
+  border-color: var(--action-primary);
+  box-shadow: var(--shadow-subtle);
+}
+
+.priority-icon {
+  color: var(--action-primary);
+}
+
+.priority-item strong {
+  display: block;
+  color: var(--text-strong);
+}
+
+.priority-item small {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-muted);
+  line-height: 1.35;
+}
+
+.priority-value {
+  font-size: 22px;
 }
 
 .metric {
@@ -390,6 +486,55 @@ tr:last-child td {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
+}
+
+.choice-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.choice-card {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: #fbfaf7;
+  padding: 14px;
+  display: grid;
+  gap: 5px;
+}
+
+.choice-card strong {
+  color: var(--text-strong);
+}
+
+.choice-card span {
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.choice-card-active {
+  border-color: var(--action-primary);
+  background: #effaf7;
+}
+
+.csv-guide-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.csv-guide-table table {
+  min-width: 760px;
+}
+
+.csv-guide-table code {
+  background: var(--bg-subtle);
+  color: var(--text-strong);
+  border-radius: var(--radius-sm);
+  padding: 3px 6px;
+  font-size: 12px;
+  font-weight: 760;
 }
 
 .field {
@@ -542,6 +687,19 @@ tr:last-child td {
   line-height: 1.45;
 }
 
+.advanced-inline {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  background: #fbfaf7;
+}
+
+.advanced-inline summary {
+  cursor: pointer;
+  color: var(--text-strong);
+  font-weight: 720;
+}
+
 .success-alert {
   border-color: #bfe2cc;
   background: #f0faf4;
@@ -567,6 +725,116 @@ tr:last-child td {
 .danger-text {
   color: var(--state-danger);
   font-weight: 760;
+}
+
+.table-issue-details {
+  width: min(100%, 360px);
+}
+
+.table-issue-details summary {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  font-weight: 780;
+  list-style: none;
+}
+
+.table-issue-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.table-issue-details summary::after {
+  content: "Show why";
+  margin-left: 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.table-issue-details[open] summary::after {
+  content: "Hide";
+}
+
+.table-issue-details summary:hover::after,
+.table-issue-details summary:focus-visible::after {
+  color: var(--text-strong);
+}
+
+.table-issue-details summary:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 3px;
+}
+
+.table-issue-danger summary {
+  color: var(--state-danger);
+}
+
+.table-issue-warning summary {
+  color: var(--state-warning);
+}
+
+.table-issue-panel {
+  margin-top: 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: #fffdfa;
+  padding: 12px;
+  box-shadow: var(--shadow-subtle);
+}
+
+.table-issue-panel strong {
+  display: block;
+  color: var(--text-strong);
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+
+.table-issue-panel ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.table-issue-panel li {
+  display: grid;
+  gap: 3px;
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 8px;
+}
+
+.table-issue-panel li:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.table-issue-panel span {
+  color: var(--text-strong);
+  font-size: 13px;
+  font-weight: 760;
+}
+
+.table-issue-panel small {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.table-issue-link {
+  display: inline-flex;
+  margin-top: 10px;
+  color: var(--action-primary);
+  font-size: 13px;
+  font-weight: 780;
+}
+
+.table-issue-link:hover,
+.table-issue-link:focus-visible {
+  color: var(--action-primary-strong);
+  text-decoration: underline;
 }
 
 .builder-layout {
@@ -710,6 +978,10 @@ tr:last-child td {
   gap: 14px;
   overflow-x: auto;
   padding-bottom: 6px;
+}
+
+.pipeline-board-simple {
+  grid-template-columns: repeat(3, minmax(280px, 1fr));
 }
 
 .pipeline-column {
@@ -934,6 +1206,7 @@ tr:last-child td {
   .grid-4,
   .grid-3,
   .grid-2,
+  .priority-list,
   .inbox-layout,
   .faq-layout {
     grid-template-columns: 1fr;
@@ -959,6 +1232,11 @@ tr:last-child td {
   }
 
   .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .choice-grid,
+  .csv-guide-grid {
     grid-template-columns: 1fr;
   }
 

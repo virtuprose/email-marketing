@@ -5,9 +5,9 @@ export default function LeadImportPage() {
   return (
     <>
       <PageHeader
-        eyebrow="CSV Import"
-        title="Import leads safely"
-        description="Map your CSV columns, preview rows, and import leads with duplicate, suppression, and compliance-field checks."
+        eyebrow="Add Leads"
+        title="Upload leads safely"
+        description="Match your CSV columns, preview rows, and add leads with duplicate, do-not-contact, and permission checks."
       />
       <CsvImportClient />
     </>

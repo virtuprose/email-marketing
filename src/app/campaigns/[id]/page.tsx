@@ -114,7 +114,7 @@ export default async function CampaignDetailPage({ params }: CampaignPageProps) 
       <PageHeader
         eyebrow="Campaign Review"
         title={campaign.name}
-        description={`${objectiveLabels[campaign.objective]} for ${campaign.offer.name}. Phase 3 schedules approved campaigns through a throttled queue.`}
+        description={`${objectiveLabels[campaign.objective]} for ${campaign.offer.name}. Review the message, approve it, and start sending safely.`}
         actions={
           <>
             <Link className="secondary-button" href="/campaigns">
@@ -127,7 +127,7 @@ export default async function CampaignDetailPage({ params }: CampaignPageProps) 
                 {campaign.status === CampaignStatus.APPROVED
                   ? "Approved"
                   : blockers.length
-                    ? "Resolve blockers"
+                    ? "Fix safety issues"
                     : "Approve"}
               </button>
             </form>
@@ -139,7 +139,7 @@ export default async function CampaignDetailPage({ params }: CampaignPageProps) 
         <Summary label="Status">
           <StatusBadge label={campaignStatusLabels[campaign.status]} status={campaign.status} />
         </Summary>
-        <Summary label="Recipients">{formatNumber(campaign._count.recipients)}</Summary>
+        <Summary label="People">{formatNumber(campaign._count.recipients)}</Summary>
         <Summary label="AI confidence">
           {campaign.aiConfidence ? `${campaign.aiConfidence}%` : "Not set"}
         </Summary>
@@ -217,7 +217,7 @@ export default async function CampaignDetailPage({ params }: CampaignPageProps) 
               <div>
                 <h2>Send controls</h2>
                 <p className="muted">
-                  Scheduling creates queue jobs. The HTTP request never sends the campaign.
+                  Starting creates sending jobs. Messages still follow limits and safety checks.
                 </p>
               </div>
               <Send size={18} aria-hidden="true" />
@@ -227,18 +227,18 @@ export default async function CampaignDetailPage({ params }: CampaignPageProps) 
                 <form action={scheduleApprovedCampaign} className="stack">
                   <input type="hidden" name="campaignId" value={campaign.id} />
                   <label className="field">
-                    <span>Sending account</span>
+                    <span>Send from</span>
                     <select className="select" name="sendingAccountId">
                       {sendingAccounts.map((account) => (
                         <option key={account.id} value={account.id}>
                           {account.name} -{" "}
-                          {account.dryRun ? "dry-run" : sendingAccountStatusLabels[account.status]}
+                          {account.dryRun ? "test mode" : sendingAccountStatusLabels[account.status]}
                         </option>
                       ))}
                     </select>
                   </label>
                   <button className="button" type="submit">
-                    <Send size={16} aria-hidden="true" /> Schedule send
+                    <Send size={16} aria-hidden="true" /> Start sending
                   </button>
                 </form>
               ) : null}
@@ -256,7 +256,7 @@ export default async function CampaignDetailPage({ params }: CampaignPageProps) 
                 <form action={resumeCampaignSending}>
                   <input type="hidden" name="campaignId" value={campaign.id} />
                   <button className="button" type="submit">
-                    <PlayCircle size={16} aria-hidden="true" /> Resume queue
+                    <PlayCircle size={16} aria-hidden="true" /> Continue sending
                   </button>
                 </form>
               ) : null}
@@ -276,8 +276,8 @@ export default async function CampaignDetailPage({ params }: CampaignPageProps) 
           <AiPanel generation={latestGeneration} campaign={campaign} />
 
           <section className="alert">
-            <ShieldAlert size={16} aria-hidden="true" /> Phase 3 sends through the queue and uses dry-run
-            unless SMTP is configured.
+            <ShieldAlert size={16} aria-hidden="true" /> Test mode is safest until your email account and
+            inbox delivery are confirmed.
           </section>
         </aside>
       </div>
@@ -290,7 +290,7 @@ function RecipientsPanel({ campaign }: { campaign: CampaignDetail }) {
     <section className="panel">
       <div className="panel-header">
         <div>
-          <h2>Recipients attached</h2>
+          <h2>People included</h2>
           <p className="muted">
             Showing first {formatNumber(campaign.recipients.length)} of{" "}
             {formatNumber(campaign._count.recipients)} recipients.
@@ -302,9 +302,9 @@ function RecipientsPanel({ campaign }: { campaign: CampaignDetail }) {
           <thead>
             <tr>
               <th>Lead</th>
-              <th>Status</th>
-              <th>Source</th>
-              <th>Legal basis</th>
+              <th>Contact status</th>
+              <th>Where from?</th>
+              <th>Why can we contact them?</th>
             </tr>
           </thead>
           <tbody>
@@ -322,8 +322,8 @@ function RecipientsPanel({ campaign }: { campaign: CampaignDetail }) {
                       status={recipient.lead.status}
                     />
                   </td>
-                  <td>{recipient.lead.source || <span className="muted">Missing</span>}</td>
-                  <td>{recipient.lead.legalBasis || <span className="muted">Missing</span>}</td>
+                  <td>{recipient.lead.source || <span className="muted">Needs info</span>}</td>
+                  <td>{recipient.lead.legalBasis || <span className="muted">Needs info</span>}</td>
                 </tr>
               ))
             ) : (
@@ -351,9 +351,9 @@ function SendMonitor({
     <section className="panel">
       <div className="panel-header">
         <div>
-          <h2>Send monitor</h2>
+          <h2>Sending progress</h2>
           <p className="muted">
-            Queue jobs send one message at a time and re-check suppression, state, and limits.
+            The assistant sends one message at a time and re-checks do-not-contact rules, state, and limits.
           </p>
         </div>
       </div>
@@ -366,19 +366,19 @@ function SendMonitor({
             <MiniMetric label="Failed" value={latestJob.failedMessages} />
           </div>
           <div className="profile-row">
-            <span>Sending account</span>
+            <span>Send from</span>
             <span>{latestJob.sendingAccount.name}</span>
           </div>
           <div className="profile-row">
             <span>Mode</span>
-            <span>{latestJob.sendingAccount.dryRun ? "Dry-run" : "SMTP"}</span>
+            <span>{latestJob.sendingAccount.dryRun ? "Test mode" : "Live email"}</span>
           </div>
           {latestJob.lastError ? <div className="alert danger-alert">{latestJob.lastError}</div> : null}
         </div>
       ) : (
         <div className="panel-body">
           <div className="empty-state">
-            No send job yet. Approved campaigns can be scheduled from the side panel.
+            No sending job yet. Approved campaigns can be started from the side panel.
           </div>
         </div>
       )}

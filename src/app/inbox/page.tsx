@@ -75,30 +75,30 @@ export default async function InboxPage({ searchParams }: InboxPageProps) {
   return (
     <>
       <PageHeader
-        eyebrow="AI Sales Agent"
-        title="AI inbox"
-        description="Every reply is classified, scored, drafted, and routed into the pipeline before more follow-ups can continue."
+        eyebrow="Replies"
+        title="Replies"
+        description="AI reads replies, drafts safe responses, and shows you who needs attention."
         actions={
           <Link className="secondary-button" href="/pipeline">
-            <UserCheck size={16} aria-hidden="true" /> View pipeline
+            <UserCheck size={16} aria-hidden="true" /> View Hot Leads
           </Link>
         }
       />
 
       <section className="grid grid-4" aria-label="Inbox metrics">
         <Metric icon={<Inbox size={18} />} label="Replies" value={counts.total} note="All captured replies" />
-        <Metric icon={<Flame size={18} />} label="Hot" value={counts.hot} note="Owner handoff candidates" />
+        <Metric icon={<Flame size={18} />} label="Hot leads" value={counts.hot} note="Ready for you" />
         <Metric
           icon={<Sparkles size={18} />}
-          label="Draft ready"
+          label="Ready replies"
           value={counts.draftReady}
           note="AI prepared responses"
         />
         <Metric
           icon={<Bot size={18} />}
-          label="Owner review"
+          label="Needs you"
           value={counts.ownerReview}
-          note="Needs manual decision"
+          note="AI wants your decision"
         />
       </section>
 
@@ -165,15 +165,15 @@ function ManualReplyPanel() {
     <section className="panel">
       <div className="panel-header">
         <div>
-          <h2>Import a reply</h2>
-          <p className="muted">Paste a client response when inbound routing is not connected yet.</p>
+          <h2>Add a reply manually</h2>
+          <p className="muted">Paste a client message when automatic inbox connection is not ready.</p>
         </div>
       </div>
       <div className="panel-body">
         <form action={createManualInboundReply} className="stack">
           <div className="form-grid">
             <label className="field">
-              <span>From email</span>
+              <span>Lead email</span>
               <input
                 className="input"
                 name="fromEmail"
@@ -183,7 +183,7 @@ function ManualReplyPanel() {
               />
             </label>
             <label className="field">
-              <span>To email</span>
+              <span>Your email</span>
               <input className="input" name="toEmail" type="email" placeholder="hello@virtuprose.com" />
             </label>
           </div>
@@ -192,7 +192,7 @@ function ManualReplyPanel() {
             <input className="input" name="subject" required placeholder="Re: quick idea" />
           </label>
           <label className="field">
-            <span>Reply body</span>
+            <span>What they said</span>
             <textarea
               className="textarea"
               name="bodyText"
@@ -201,7 +201,7 @@ function ManualReplyPanel() {
             />
           </label>
           <button className="button" type="submit">
-            <Sparkles size={16} aria-hidden="true" /> Analyze reply
+            <Sparkles size={16} aria-hidden="true" /> Let AI read it
           </button>
         </form>
       </div>
@@ -214,16 +214,16 @@ function FilterPanel({ params }: { params: { intent?: string; status?: string } 
     <section className="panel">
       <div className="panel-header">
         <div>
-          <h2>Work queue</h2>
-          <p className="muted">Filter by what the AI thinks should happen next.</p>
+          <h2>Find replies</h2>
+          <p className="muted">Filter by what the lead wants or where the reply stands.</p>
         </div>
       </div>
       <div className="panel-body">
         <form className="form-grid" action="/inbox">
           <label className="field">
-            <span>Intent</span>
+            <span>What they want</span>
             <select className="select" name="intent" defaultValue={params.intent ?? ""}>
-              <option value="">All intents</option>
+              <option value="">All reply types</option>
               {Object.values(ReplyIntent).map((intent) => (
                 <option key={intent} value={intent}>
                   {replyIntentLabels[intent]}
@@ -232,9 +232,9 @@ function FilterPanel({ params }: { params: { intent?: string; status?: string } 
             </select>
           </label>
           <label className="field">
-            <span>Status</span>
+            <span>Reply stage</span>
             <select className="select" name="status" defaultValue={params.status ?? ""}>
-              <option value="">All statuses</option>
+              <option value="">All stages</option>
               {Object.values(ReplyStatus).map((status) => (
                 <option key={status} value={status}>
                   {replyStatusLabels[status]}
@@ -243,7 +243,7 @@ function FilterPanel({ params }: { params: { intent?: string; status?: string } 
             </select>
           </label>
           <button className="secondary-button" type="submit">
-            Apply filters
+            Show replies
           </button>
         </form>
       </div>
@@ -261,7 +261,7 @@ function ReplyDetailPanel({
   if (!reply) {
     return (
       <aside className="panel">
-        <div className="panel-body empty-state">Import or select a reply to see the AI decision.</div>
+        <div className="panel-body empty-state">Add or select a reply to see what AI recommends.</div>
       </aside>
     );
   }
@@ -280,22 +280,18 @@ function ReplyDetailPanel({
       </div>
       <div className="panel-body stack">
         <div className="grid grid-3">
-          <MiniMetric label="Intent" value={replyIntentLabels[reply.intent]} status={reply.intent} />
-          <MiniMetric
-            label="Sentiment"
-            value={replySentimentLabels[reply.sentiment]}
-            status={reply.sentiment}
-          />
-          <MiniMetric label="Confidence" value={`${reply.aiConfidence}%`} />
+          <MiniMetric label="What they want" value={replyIntentLabels[reply.intent]} status={reply.intent} />
+          <MiniMetric label="Tone" value={replySentimentLabels[reply.sentiment]} status={reply.sentiment} />
+          <MiniMetric label="AI confidence" value={confidenceLabel(reply.aiConfidence)} />
         </div>
 
         <div className="profile-list">
           <ProfileRow
-            label="Lead status"
+            label="Contact status"
             value={reply.lead ? leadStatusLabels[reply.lead.status] : "Unknown"}
           />
           <ProfileRow label="Campaign" value={reply.campaign?.name || "Not matched"} />
-          <ProfileRow label="Offer" value={reply.campaign?.offer.name || "Not matched"} />
+          <ProfileRow label="Service" value={reply.campaign?.offer.name || "Not matched"} />
           <ProfileRow label="Received" value={formatDate(reply.receivedAt)} />
         </div>
 
@@ -316,16 +312,16 @@ function ReplyDetailPanel({
         ) : null}
 
         <div>
-          <h3>Incoming reply</h3>
+          <h3>What they said</h3>
           <pre className="email-preview">{reply.bodyText}</pre>
         </div>
 
         <div>
-          <h3>AI draft</h3>
+          <h3>Suggested reply</h3>
           {draft ? (
             <div className="stack" style={{ marginTop: 8 }}>
               <div className="profile-row">
-                <span>Status</span>
+                <span>Reply status</span>
                 <span>
                   <StatusBadge label={aiReplyDraftStatusLabels[draft.status]} status={draft.status} />
                 </span>
@@ -356,18 +352,18 @@ function ReplyDetailPanel({
               <input type="hidden" name="draftId" value={draft.id} />
               <input type="hidden" name="replyId" value={reply.id} />
               <label className="field">
-                <span>Sending account</span>
+                <span>Send from</span>
                 <select className="select" name="sendingAccountId">
                   {sendingAccounts.map((account) => (
                     <option key={account.id} value={account.id}>
                       {account.name} -{" "}
-                      {account.dryRun ? "dry-run" : sendingAccountStatusLabels[account.status]}
+                      {account.dryRun ? "test mode" : sendingAccountStatusLabels[account.status]}
                     </option>
                   ))}
                 </select>
               </label>
               <button className="button" type="submit">
-                <Send size={16} aria-hidden="true" /> Send AI draft
+                <Send size={16} aria-hidden="true" /> Send AI reply
               </button>
             </form>
           ) : null}
@@ -376,19 +372,19 @@ function ReplyDetailPanel({
             <form action={markInboundReplyHot}>
               <input type="hidden" name="replyId" value={reply.id} />
               <button className="secondary-button" type="submit">
-                <Flame size={16} aria-hidden="true" /> Mark hot
+                <Flame size={16} aria-hidden="true" /> Mark as hot
               </button>
             </form>
             <form action={reprocessInboundReply}>
               <input type="hidden" name="replyId" value={reply.id} />
               <button className="secondary-button" type="submit">
-                <RotateCcw size={16} aria-hidden="true" /> Re-run AI
+                <RotateCcw size={16} aria-hidden="true" /> Ask AI again
               </button>
             </form>
             <form action={closeInboundReply}>
               <input type="hidden" name="replyId" value={reply.id} />
               <button className="secondary-button" type="submit">
-                Close review
+                I handled this
               </button>
             </form>
           </div>
@@ -429,6 +425,12 @@ function MiniMetric({ label, value, status }: { label: string; value: string; st
       </p>
     </div>
   );
+}
+
+function confidenceLabel(score: number) {
+  if (score >= 80) return `High confidence (${score}%)`;
+  if (score >= 55) return `Needs review (${score}%)`;
+  return `Do not auto-send (${score}%)`;
 }
 
 function ProfileRow({ label, value }: { label: string; value: string }) {

@@ -1,6 +1,6 @@
 # Virtuprose Email + WhatsApp Agent Developer Handoff
 
-Last updated: 2026-06-06
+Last updated: 2026-06-07
 
 This project is an internal, single-owner Virtuprose platform for lead import, compliant outbound email, Meta WhatsApp template campaigns, AI reply drafting/classification, and hot-lead handoff. It is not a public SaaS yet. Build decisions should optimize for reliable owner use, compliance, and sender reputation before scale.
 
@@ -18,6 +18,15 @@ This project is an internal, single-owner Virtuprose platform for lead import, c
 - Phone number status was registered through Cloud API and confirmed `CONNECTED`.
 - A Meta marketing template named `virtuprose_test_intro_1780700375249` was submitted, approved, synced locally, and used for one successful live test send.
 - The successful test message went to `+96569984942` with Meta message ID `wamid.HBgLOTY1Njk5ODQ5NDIVAgARGBJBQUI0NUYyMjNGQTRBRUZGRjgA`.
+- The app is deployed on the VPS at `http://31.97.213.79`.
+- VPS app path is `/opt/virtuprose-sales-assistant`.
+- Docker Compose project is `virtuprose-sales-assistant`.
+- App, worker, Postgres, and Redis containers are running on the VPS.
+- Production credentials are stored in `/opt/virtuprose-sales-assistant/.env.production` on the VPS and must never be committed.
+- Owner login details are saved locally in `/Users/muhammadzaid/.codex/virtuprose-sales-assistant-vps-credentials.txt`.
+- `OPENAI_API_KEY` is currently missing on the VPS, so full AI reply quality is pending.
+- SMTP passwords are currently missing on the VPS, so production email sending is pending.
+- HTTPS/domain setup is pending, so Meta inbound webhooks are not production-ready yet.
 
 ## Architecture
 
@@ -111,6 +120,43 @@ Notes:
 - `META_PHONE_NUMBER_ID` and `META_WABA_ID` are identifiers, not authentication secrets.
 - Use `META_WHATSAPP_DRY_RUN="true"` by default in new environments.
 - Use `META_WHATSAPP_DRY_RUN="false"` only for deliberate live sends.
+
+## VPS Deployment Runbook
+
+Current VPS:
+
+```text
+root@31.97.213.79
+```
+
+Current public app URL:
+
+```text
+http://31.97.213.79
+```
+
+Current app path:
+
+```text
+/opt/virtuprose-sales-assistant
+```
+
+Deploy or redeploy:
+
+```bash
+cd /opt/virtuprose-sales-assistant
+docker compose --env-file .env.production -p virtuprose-sales-assistant -f docker-compose.production.yml up -d --build
+```
+
+Check services:
+
+```bash
+cd /opt/virtuprose-sales-assistant
+docker compose --env-file .env.production -p virtuprose-sales-assistant -f docker-compose.production.yml ps
+curl http://127.0.0.1:3004/api/health
+```
+
+More deployment details are in `docs/VPS_DEPLOYMENT.md`.
 
 ## Meta WhatsApp Setup Runbook
 
@@ -251,6 +297,9 @@ Provider mapping:
 
 - A permanent System User token should replace the dashboard-generated user token before unattended production use.
 - Webhooks need a public HTTPS URL before inbound replies and AI WhatsApp auto-replies can work end to end.
+- `OPENAI_API_KEY` must be added on the VPS before full AI reply classification and drafting are production-ready.
+- SMTP credentials must be added before production email sending.
+- A real domain and Let's Encrypt SSL certificate are required before Meta webhooks can be connected reliably.
 - Payment method and message limits should be confirmed in WhatsApp Manager before volume.
 - Old Twilio-specific secrets should stay removed from `.env.example` and should never be committed.
 - The current dashboard is single-user and protected by Basic Auth, not multi-user role-based auth.

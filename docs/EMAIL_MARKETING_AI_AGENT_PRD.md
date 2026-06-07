@@ -5,6 +5,23 @@ Owner: Virtuprose
 Product type: Internal single-user AI sales engagement platform  
 Primary goal: Convert imported cold or warm leads into qualified hot leads for Virtuprose services through compliant email outreach, AI-managed conversations, lead scoring, and human handoff.
 
+## Current Build And Deployment Status
+
+As of 2026-06-07, the internal product has been implemented and deployed for owner testing on the VPS at `http://31.97.213.79`.
+
+Deployment and progress details are tracked in:
+
+- `docs/VPS_DEPLOYMENT.md`
+- `docs/PROJECT_PROGRESS.md`
+- `docs/DEVELOPER_HANDOFF.md`
+
+Key production gaps remaining:
+
+- Add `OPENAI_API_KEY` for full AI reply classification and drafting.
+- Add a real domain and HTTPS for Meta WhatsApp inbound webhooks.
+- Add SMTP credentials and domain authentication before production email sending.
+- Add scheduled database backups.
+
 ## 1. Executive Summary
 
 Virtuprose needs an internal platform that behaves like an AI sales development employee: the user imports leads, selects the service/offering to sell, launches controlled email campaigns, and lets AI personalize outreach, monitor replies, continue conversations, score intent, and surface hot leads when personal involvement is needed.

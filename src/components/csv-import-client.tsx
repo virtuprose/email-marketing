@@ -1,12 +1,96 @@
 "use client";
 
-import { AlertCircle, ArrowRight, FileUp } from "lucide-react";
+import { AlertCircle, ArrowRight, Download, FileUp } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Papa from "papaparse";
 import { useMemo, useState } from "react";
 import { FIELD_DEFINITIONS, guessMapping, type ImportMapping } from "@/lib/imports";
 
 type PreviewRow = Record<string, string>;
+
+const recommendedColumns = [
+  {
+    column: "email",
+    required: "Required",
+    format: "name@company.com",
+    example: "carlos@example.com"
+  },
+  {
+    column: "first_name",
+    required: "Recommended",
+    format: "Text",
+    example: "Carlos"
+  },
+  {
+    column: "last_name",
+    required: "Optional",
+    format: "Text",
+    example: "Alvarez"
+  },
+  {
+    column: "company",
+    required: "Recommended",
+    format: "Text",
+    example: "Example Co"
+  },
+  {
+    column: "website",
+    required: "Optional",
+    format: "Website URL",
+    example: "https://example.com"
+  },
+  {
+    column: "role",
+    required: "Optional",
+    format: "Job title",
+    example: "Founder"
+  },
+  {
+    column: "country",
+    required: "Recommended",
+    format: "Country name",
+    example: "Kuwait"
+  },
+  {
+    column: "source",
+    required: "Recommended",
+    format: "Where you got the lead",
+    example: "LinkedIn"
+  },
+  {
+    column: "permission_reason",
+    required: "Recommended",
+    format: "Why contact is allowed",
+    example: "Business outreach"
+  },
+  {
+    column: "phone",
+    required: "For WhatsApp",
+    format: "Full number with country code",
+    example: "+96569984942"
+  },
+  {
+    column: "whatsapp_opt_in",
+    required: "For WhatsApp",
+    format: "yes, true, 1, or allowed",
+    example: "yes"
+  },
+  {
+    column: "whatsapp_permission_source",
+    required: "For WhatsApp",
+    format: "Where permission came from",
+    example: "Client gave number"
+  },
+  {
+    column: "tags",
+    required: "Optional",
+    format: "Separate with comma or semicolon",
+    example: "ai-agent, kuwait"
+  }
+];
+
+const sampleCsv = `email,first_name,last_name,company,website,role,country,source,permission_reason,phone,whatsapp_opt_in,whatsapp_permission_source,tags
+carlos@example.com,Carlos,Alvarez,Example Co,https://example.com,Founder,Kuwait,LinkedIn,Business outreach,+96569984942,yes,Client gave number,"ai-agent, kuwait"`;
 
 export function CsvImportClient() {
   const router = useRouter();
@@ -70,135 +154,210 @@ export function CsvImportClient() {
   }
 
   return (
-    <div className="grid grid-2">
+    <div className="stack">
       <section className="panel">
         <div className="panel-header">
           <div>
-            <h2>Upload CSV</h2>
+            <h2>CSV format guide</h2>
             <p className="muted">
-              Use a list with email, source, country, legal basis, and WhatsApp opt-in when sending WhatsApp.
+              Use these column names when possible. The app can match similar names, but this format gives the
+              cleanest import.
             </p>
           </div>
+          <a
+            className="secondary-button"
+            href="/examples/virtuprose-leads-example.csv"
+            download="virtuprose-leads-example.csv"
+          >
+            <Download size={16} aria-hidden="true" /> Download example CSV
+          </a>
         </div>
         <div className="panel-body stack">
-          <label className="field">
-            <span>CSV file</span>
-            <input
-              className="input"
-              type="file"
-              accept=".csv,text/csv"
-              onChange={(event) => handleFile(event.target.files?.[0] ?? null)}
-            />
-          </label>
-
-          {file ? (
-            <div className="success-alert alert">
-              <FileUp size={16} aria-hidden="true" /> {file.name} ready for mapping.
+          <div className="csv-guide-grid">
+            <div className="alert success-alert">
+              <strong>Minimum needed</strong>
+              <br />
+              Add at least <strong>email</strong>. For better AI scoring, also add company, country, source,
+              and why you can contact the lead.
             </div>
-          ) : null}
-
-          {error ? (
-            <div className="danger-alert alert" role="alert">
-              <AlertCircle size={16} aria-hidden="true" /> {error}
+            <div className="alert">
+              <strong>For WhatsApp campaigns</strong>
+              <br />
+              Add <strong>phone</strong>, <strong>whatsapp_opt_in</strong>, and{" "}
+              <strong>whatsapp_permission_source</strong>. People without WhatsApp permission are skipped.
             </div>
-          ) : null}
-        </div>
-      </section>
-
-      <section className="panel">
-        <div className="panel-header">
-          <div>
-            <h2>Map fields</h2>
-            <p className="muted">
-              Email is required. WhatsApp sends also need phone, opt-in, and consent source.
-            </p>
           </div>
-        </div>
-        <div className="panel-body stack">
-          {headers.length ? (
-            <>
-              <div className="form-grid">
-                {FIELD_DEFINITIONS.map((field) => (
-                  <label className="field" key={field.key}>
-                    <span>
-                      {field.label}
-                      {field.required ? " *" : ""}
-                    </span>
-                    <select
-                      className="select"
-                      value={mapping[field.key] ?? ""}
-                      onChange={(event) =>
-                        setMapping((current) => ({
-                          ...current,
-                          [field.key]: event.target.value || undefined
-                        }))
-                      }
-                    >
-                      <option value="">Do not import</option>
-                      {headers.map((header) => (
-                        <option key={header} value={header}>
-                          {header}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+
+          <div className="table-wrap csv-guide-table" aria-label="Recommended CSV columns">
+            <table>
+              <thead>
+                <tr>
+                  <th>Column title</th>
+                  <th>Needed for</th>
+                  <th>Format</th>
+                  <th>Example</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recommendedColumns.map((column) => (
+                  <tr key={column.column}>
+                    <td>
+                      <code>{column.column}</code>
+                    </td>
+                    <td>{column.required}</td>
+                    <td>{column.format}</td>
+                    <td>{column.example}</td>
+                  </tr>
                 ))}
-              </div>
+              </tbody>
+            </table>
+          </div>
 
-              {requiredMissing ? (
-                <div className="danger-alert alert">Map an email column before importing.</div>
-              ) : null}
+          <details className="advanced-inline">
+            <summary>Show example CSV</summary>
+            <pre className="email-preview" style={{ marginTop: 10 }}>
+              {sampleCsv}
+            </pre>
+          </details>
 
-              <button
-                className="button"
-                type="button"
-                onClick={submitImport}
-                disabled={requiredMissing || isSubmitting}
-              >
-                {isSubmitting ? "Importing..." : "Import leads"}
-                <ArrowRight size={16} aria-hidden="true" />
-              </button>
-            </>
-          ) : (
-            <div className="empty-state">Upload a CSV to preview columns and map fields.</div>
-          )}
+          <div className="alert">
+            <strong>Before uploading:</strong> save the file as <strong>.csv</strong>, keep the first row as
+            column titles, do not merge cells, and use one lead per row.
+          </div>
         </div>
       </section>
 
-      {rows.length ? (
-        <section className="panel" style={{ gridColumn: "1 / -1" }}>
+      <div className="grid grid-2">
+        <section className="panel">
           <div className="panel-header">
             <div>
-              <h2>Preview</h2>
+              <h2>Upload CSV</h2>
               <p className="muted">
-                First rows only. The full file is parsed safely on the server after import.
+                Use a list with email, country, where the lead came from, why you can contact them, and
+                WhatsApp permission when sending WhatsApp.
               </p>
             </div>
           </div>
-          <div className="panel-body">
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    {headers.map((header) => (
-                      <th key={header}>{header}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((row, rowIndex) => (
-                    <tr key={rowIndex}>
-                      {headers.map((header) => (
-                        <td key={header}>{row[header] || <span className="muted">Empty</span>}</td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+          <div className="panel-body stack">
+            <label className="field">
+              <span>CSV file</span>
+              <input
+                className="input"
+                type="file"
+                accept=".csv,text/csv"
+                onChange={(event) => handleFile(event.target.files?.[0] ?? null)}
+              />
+            </label>
+
+            {file ? (
+              <div className="success-alert alert">
+                <FileUp size={16} aria-hidden="true" /> {file.name} ready for mapping.
+              </div>
+            ) : null}
+
+            {error ? (
+              <div className="danger-alert alert" role="alert">
+                <AlertCircle size={16} aria-hidden="true" /> {error}
+              </div>
+            ) : null}
           </div>
         </section>
-      ) : null}
+
+        <section className="panel">
+          <div className="panel-header">
+            <div>
+              <h2>Map fields</h2>
+              <p className="muted">
+                Email is required. WhatsApp sends also need phone, opt-in, and consent source.
+              </p>
+            </div>
+          </div>
+          <div className="panel-body stack">
+            {headers.length ? (
+              <>
+                <div className="form-grid">
+                  {FIELD_DEFINITIONS.map((field) => (
+                    <label className="field" key={field.key}>
+                      <span>
+                        {field.label}
+                        {field.required ? " *" : ""}
+                      </span>
+                      <select
+                        className="select"
+                        value={mapping[field.key] ?? ""}
+                        onChange={(event) =>
+                          setMapping((current) => ({
+                            ...current,
+                            [field.key]: event.target.value || undefined
+                          }))
+                        }
+                      >
+                        <option value="">Do not import</option>
+                        {headers.map((header) => (
+                          <option key={header} value={header}>
+                            {header}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ))}
+                </div>
+
+                {requiredMissing ? (
+                  <div className="danger-alert alert">Map an email column before importing.</div>
+                ) : null}
+
+                <button
+                  className="button"
+                  type="button"
+                  onClick={submitImport}
+                  disabled={requiredMissing || isSubmitting}
+                >
+                  {isSubmitting ? "Importing..." : "Import leads"}
+                  <ArrowRight size={16} aria-hidden="true" />
+                </button>
+              </>
+            ) : (
+              <div className="empty-state">Upload a CSV to preview columns and map fields.</div>
+            )}
+          </div>
+        </section>
+
+        {rows.length ? (
+          <section className="panel" style={{ gridColumn: "1 / -1" }}>
+            <div className="panel-header">
+              <div>
+                <h2>Preview</h2>
+                <p className="muted">
+                  First rows only. The full file is parsed safely on the server after import.
+                </p>
+              </div>
+            </div>
+            <div className="panel-body">
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      {headers.map((header) => (
+                        <th key={header}>{header}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((row, rowIndex) => (
+                      <tr key={rowIndex}>
+                        {headers.map((header) => (
+                          <td key={header}>{row[header] || <span className="muted">Empty</span>}</td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+        ) : null}
+      </div>
     </div>
   );
 }

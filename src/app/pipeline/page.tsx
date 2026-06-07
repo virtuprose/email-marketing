@@ -18,13 +18,19 @@ const dealInclude = {
 
 type DealWithRelations = Prisma.DealGetPayload<{ include: typeof dealInclude }>;
 
-const boardStages: DealStage[] = [
-  DealStage.REPLIED,
-  DealStage.ENGAGED,
-  DealStage.HOT,
-  DealStage.OWNER_HANDLING,
-  DealStage.PROPOSAL_SENT,
-  DealStage.FOLLOW_UP_LATER
+const boardColumns: Array<{ title: string; stages: DealStage[] }> = [
+  {
+    title: "Ready to contact",
+    stages: [DealStage.REPLIED, DealStage.ENGAGED, DealStage.HOT, DealStage.OWNER_HANDLING]
+  },
+  {
+    title: "Proposal / pricing",
+    stages: [DealStage.PROPOSAL_SENT]
+  },
+  {
+    title: "Follow up later",
+    stages: [DealStage.FOLLOW_UP_LATER]
+  }
 ];
 
 export default async function PipelinePage() {
@@ -42,12 +48,12 @@ export default async function PipelinePage() {
   return (
     <>
       <PageHeader
-        eyebrow="Deal Closing"
-        title="Pipeline"
-        description="AI-created opportunities are grouped by closing stage so the owner only spends time on qualified conversations."
+        eyebrow="Hot Leads"
+        title="Hot Leads"
+        description="Only the conversations worth your personal attention."
         actions={
           <Link className="button" href="/inbox">
-            Work inbox <ArrowRight size={16} aria-hidden="true" />
+            Review Replies <ArrowRight size={16} aria-hidden="true" />
           </Link>
         }
       />
@@ -55,26 +61,32 @@ export default async function PipelinePage() {
       <section className="grid grid-4" aria-label="Pipeline metrics">
         <Metric
           icon={<Target size={18} />}
-          label="Open deals"
+          label="Active hot leads"
           value={openCount}
           note="Active opportunities"
         />
-        <Metric icon={<Flame size={18} />} label="Hot" value={hotDeals} note="Owner should handle" />
+        <Metric icon={<Flame size={18} />} label="Ready now" value={hotDeals} note="Needs your attention" />
         <Metric
           icon={<MailCheck size={18} />}
-          label="Total deals"
+          label="All opportunities"
           value={deals.length}
           note="Created from replies"
         />
-        <Metric icon={<Trophy size={18} />} label="Won" value={wonCount} note="Manually marked wins" />
+        <Metric icon={<Trophy size={18} />} label="Closed wins" value={wonCount} note="Marked as won" />
       </section>
 
-      <section className="pipeline-board" aria-label="Deal pipeline" style={{ marginTop: 16 }}>
-        {boardStages.map((stage) => (
+      <section
+        className="pipeline-board pipeline-board-simple"
+        aria-label="Hot lead board"
+        style={{ marginTop: 16 }}
+      >
+        {boardColumns.map((column) => (
           <PipelineColumn
-            key={stage}
-            stage={stage}
-            deals={deals.filter((deal) => deal.stage === stage && deal.status !== DealStatus.WON)}
+            key={column.title}
+            title={column.title}
+            deals={deals.filter(
+              (deal) => column.stages.includes(deal.stage) && deal.status === DealStatus.OPEN
+            )}
           />
         ))}
       </section>
@@ -83,7 +95,7 @@ export default async function PipelinePage() {
         <div className="panel-header">
           <div>
             <h2>Closed and paused</h2>
-            <p className="muted">Keep a short record of what the AI surfaced and how it ended.</p>
+            <p className="muted">A simple record of leads you already handled.</p>
           </div>
         </div>
         <div className="table-wrap embedded-table" aria-label="Closed deals">
@@ -133,18 +145,18 @@ export default async function PipelinePage() {
   );
 }
 
-function PipelineColumn({ stage, deals }: { stage: DealStage; deals: DealWithRelations[] }) {
+function PipelineColumn({ title, deals }: { title: string; deals: DealWithRelations[] }) {
   return (
     <section className="pipeline-column">
       <div className="pipeline-column-header">
-        <h2>{dealStageLabels[stage]}</h2>
+        <h2>{title}</h2>
         <span>{formatNumber(deals.length)}</span>
       </div>
       <div className="stack">
         {deals.length ? (
           deals.map((deal) => <DealCard key={deal.id} deal={deal} />)
         ) : (
-          <div className="empty-state compact-empty">No deals</div>
+          <div className="empty-state compact-empty">No hot leads here yet.</div>
         )}
       </div>
     </section>
@@ -163,16 +175,16 @@ function DealCard({ deal }: { deal: DealWithRelations }) {
       </div>
 
       <div className="profile-list">
-        <ProfileRow label="Score" value={`${deal.priorityScore}/100`} />
-        <ProfileRow label="Status" value={dealStatusLabels[deal.status]} />
-        <ProfileRow label="Next action" value={deal.nextAction || "Review manually"} />
+        <ProfileRow label="Lead strength" value={`${deal.priorityScore}/100`} />
+        <ProfileRow label="Where this lead stands" value={dealStatusLabels[deal.status]} />
+        <ProfileRow label="Recommended next step" value={deal.nextAction || "Review manually"} />
         <ProfileRow label="Updated" value={formatDate(deal.updatedAt)} />
       </div>
 
       <form action={updatePipelineDealStage} className="stack">
         <input type="hidden" name="dealId" value={deal.id} />
         <label className="field">
-          <span>Move stage</span>
+          <span>Move to</span>
           <select className="select" name="stage" defaultValue={deal.stage}>
             {Object.values(DealStage).map((stage) => (
               <option key={stage} value={stage}>
@@ -182,11 +194,11 @@ function DealCard({ deal }: { deal: DealWithRelations }) {
           </select>
         </label>
         <label className="field">
-          <span>Owner notes</span>
+          <span>My notes</span>
           <textarea className="textarea compact-textarea" name="notes" defaultValue={deal.ownerNotes ?? ""} />
         </label>
         <button className="secondary-button" type="submit">
-          Update deal
+          Save lead
         </button>
       </form>
     </article>

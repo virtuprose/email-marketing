@@ -2,6 +2,13 @@
 
 Use this checklist before moving from local dry-run testing to real outreach.
 
+Current VPS deployment:
+
+- Public URL: `http://31.97.213.79`
+- App path: `/opt/virtuprose-sales-assistant`
+- Credentials note: `/Users/muhammadzaid/.codex/virtuprose-sales-assistant-vps-credentials.txt`
+- Detailed runbook: `docs/VPS_DEPLOYMENT.md`
+
 ## Local App
 
 - App runs at `http://localhost:3000`.
@@ -31,6 +38,12 @@ Use this checklist before moving from local dry-run testing to real outreach.
 - The dashboard template status has been synced after Meta approval.
 - Webhook callback uses public HTTPS, not localhost.
 
+Current status on VPS:
+
+- Meta credentials are set.
+- `META_WHATSAPP_DRY_RUN` is currently `false`, so WhatsApp sends are live.
+- HTTPS webhook setup is still pending.
+
 ## Domain And Compliance
 
 - SPF is configured for the sending provider.
@@ -42,6 +55,7 @@ Use this checklist before moving from local dry-run testing to real outreach.
 
 ## AI Inbox
 
+- `OPENAI_API_KEY` must be set before full AI reply classification and drafting are production-ready.
 - Paste replies into `/inbox` while inbound routing is not connected.
 - If using a provider inbound parser, set `INBOUND_WEBHOOK_SECRET`.
 - Connect provider inbound parser to `/api/inbound/replies`.

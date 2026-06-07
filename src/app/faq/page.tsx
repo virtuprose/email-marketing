@@ -28,9 +28,9 @@ const faqSections: FaqSection[] = [
         answer: (
           <>
             <p>
-              This is your <strong>internal Virtuprose AI email sales agent</strong>. You bring leads, choose
-              the offer, approve the campaign, and let the system handle safe sending, reply triage, AI
-              drafts, scoring, and hot-lead handoff.
+              This is your <strong>internal Virtuprose Sales Assistant</strong>. You bring leads, choose the
+              service, approve the campaign, and let the system handle safe sending, reply review, AI drafts,
+              scoring, and hot-lead handoff.
             </p>
             <p>
               The platform is built for <strong>one owner</strong>, not for public SaaS billing or team
@@ -46,15 +46,16 @@ const faqSections: FaqSection[] = [
         answer: (
           <ol className="faq-list">
             <li>
-              Import leads from CSV with <strong>email, company, source, country, and legal basis</strong>.
+              Add leads from CSV with{" "}
+              <strong>email, company, country, where they came from, and why you can contact them</strong>.
             </li>
-            <li>Select the Virtuprose offer you want to sell.</li>
-            <li>Generate an AI campaign, review the copy, and fix safety blockers.</li>
-            <li>Approve the campaign and schedule it through the throttled sending queue.</li>
-            <li>Keep the worker running so queued email jobs can process.</li>
-            <li>Paste replies into the AI inbox, or connect the inbound webhook later.</li>
+            <li>Select the Virtuprose service you want to sell.</li>
+            <li>Create a campaign, review the message, and fix safety warnings.</li>
+            <li>Approve the campaign and start sending slowly.</li>
+            <li>Keep the sending worker running so campaign messages can process.</li>
+            <li>Paste replies into Replies, or connect automatic reply capture later.</li>
             <li>Review AI classification and draft replies.</li>
-            <li>Handle hot leads in the pipeline yourself.</li>
+            <li>Handle hot leads yourself.</li>
           </ol>
         )
       },
@@ -63,16 +64,17 @@ const faqSections: FaqSection[] = [
         answer: (
           <ul className="faq-list">
             <li>
-              <strong>Command Center:</strong> check hot handoffs, owner-review replies, and open deals.
+              <strong>Home:</strong> check hot leads, replies that need you, and campaigns currently sending.
             </li>
             <li>
-              <strong>Settings:</strong> confirm dry-run, sender identity, reply-to, and kill switch state.
+              <strong>Settings:</strong> confirm test mode, business profile, reply-to, and pause sending
+              state.
             </li>
             <li>
-              <strong>AI Inbox:</strong> review new replies before sending any AI draft.
+              <strong>Replies:</strong> review new replies before sending any AI draft.
             </li>
             <li>
-              <strong>Reports:</strong> watch replies, skipped sends, failures, and suppressed contacts.
+              <strong>Campaigns:</strong> watch sends, skipped people, and failed messages.
             </li>
           </ul>
         )
@@ -102,7 +104,7 @@ const faqSections: FaqSection[] = [
                 <strong>country</strong> - important for compliance and risk decisions.
               </li>
               <li>
-                <strong>source</strong> and <strong>legal basis</strong> - required for responsible outreach.
+                <strong>source/contact reason</strong> - required for responsible outreach.
               </li>
               <li>
                 <strong>tags</strong> or segment notes - useful for offer targeting.
@@ -112,7 +114,7 @@ const faqSections: FaqSection[] = [
         )
       },
       {
-        question: "Why does the app care about source and legal basis?",
+        question: "Why does the app ask where leads came from?",
         answer: (
           <p>
             Because global outreach is not only a sending problem. You need to know where a lead came from,
@@ -125,9 +127,9 @@ const faqSections: FaqSection[] = [
         question: "What happens to duplicate, invalid, or suppressed leads?",
         answer: (
           <p>
-            The import flow flags invalid emails, detects duplicates, and checks the suppression list.
-            Suppressed contacts should not become sendable campaign recipients. This protects your domain and
-            avoids contacting people who already opted out or should not be contacted.
+            The upload flow flags invalid emails, detects duplicates, and checks the do-not-contact list.
+            Blocked contacts should not become campaign recipients. This protects your domain and avoids
+            contacting people who already opted out or should not be contacted.
           </p>
         )
       }
@@ -147,13 +149,13 @@ const faqSections: FaqSection[] = [
         )
       },
       {
-        question: "What is dry-run mode?",
+        question: "What is test mode?",
         defaultOpen: true,
         answer: (
           <p>
-            <strong>Dry-run mode</strong> lets the platform create queue jobs, message records, reply drafts,
-            and reports without sending external email. Keep dry-run enabled until SMTP, domain
-            authentication, and test-inbox delivery are verified.
+            <strong>Test mode</strong> lets the platform create message records, reply drafts, and reports
+            without sending real email. Keep test mode enabled until email sending, domain authentication, and
+            test-inbox delivery are verified.
           </p>
         )
       },
@@ -161,9 +163,9 @@ const faqSections: FaqSection[] = [
         question: "What happens when I schedule a campaign?",
         answer: (
           <p>
-            Scheduling creates message records and queue jobs. The worker sends one job at a time and
-            re-checks suppression, lead status, campaign status, account status, and sending limits
-            immediately before each email.
+            Starting a campaign creates message records and sending jobs. The worker sends one job at a time
+            and re-checks do-not-contact rules, lead status, campaign status, account status, and sending
+            limits immediately before each email.
           </p>
         )
       },
@@ -178,10 +180,10 @@ const faqSections: FaqSection[] = [
         )
       },
       {
-        question: "What is the global kill switch?",
+        question: "What is Pause all sending?",
         answer: (
           <p>
-            The kill switch pauses active sending jobs. Use it immediately if you see unusual bounces,
+            Pause all sending stops active sending jobs. Use it immediately if you see unusual bounces,
             complaints, provider errors, wrong audience, missing unsubscribe, or any campaign mistake.
           </p>
         )
@@ -189,16 +191,16 @@ const faqSections: FaqSection[] = [
     ]
   },
   {
-    title: "WhatsApp Template Campaigns",
-    description: "How Meta WhatsApp templates, consent, replies, and AI handoff work.",
+    title: "WhatsApp Campaigns",
+    description: "How WhatsApp message templates, permission, replies, and AI handoff work.",
     items: [
       {
         question: "What is the WhatsApp MVP for?",
         defaultOpen: true,
         answer: (
           <p>
-            The WhatsApp MVP lets you send <strong>approved Meta WhatsApp templates</strong> to clients who
-            have a phone number and recorded WhatsApp opt-in, then routes replies into the AI inbox for
+            The WhatsApp MVP lets you send <strong>approved WhatsApp message templates</strong> to clients who
+            have a phone number and recorded WhatsApp permission, then routes replies into Replies for
             qualification and owner handoff.
           </p>
         )
@@ -208,7 +210,8 @@ const faqSections: FaqSection[] = [
         answer: (
           <ul className="faq-list">
             <li>
-              <strong>phone</strong> - must normalize to E.164 format, such as <code>+965...</code>.
+              <strong>phone</strong> - add the full phone number with country code, such as{" "}
+              <code>+965...</code>.
             </li>
             <li>
               <strong>whatsapp_opt_in</strong> - use yes/true/1 for leads allowed to receive WhatsApp.
@@ -229,12 +232,12 @@ const faqSections: FaqSection[] = [
         )
       },
       {
-        question: "How do Meta templates work here?",
+        question: "How do WhatsApp message templates work here?",
         answer: (
           <p>
-            Add the template in <strong>WhatsApp &gt; Templates</strong> with its Meta template name,
-            language, category, variables, and body text. Submit it to Meta for approval or sync an existing
-            approved template. Campaigns can send only active approved templates.
+            Add the message in <strong>Campaigns &gt; Message Templates</strong> with its WhatsApp template
+            name, language, category, personal words, and message text. Send it for WhatsApp approval or check
+            an existing approved template. Campaigns can send only active approved templates.
           </p>
         )
       },
@@ -250,11 +253,11 @@ const faqSections: FaqSection[] = [
         )
       },
       {
-        question: "Which Meta webhook do I need?",
+        question: "Which WhatsApp connection URL do I need?",
         answer: (
           <ul className="faq-list">
             <li>
-              <code>/api/webhooks/meta/whatsapp</code> verifies the Meta webhook challenge.
+              <code>/api/webhooks/meta/whatsapp</code> verifies the WhatsApp connection.
             </li>
             <li>The same endpoint receives messages and sent, delivered, read, and failed statuses.</li>
           </ul>
@@ -264,17 +267,17 @@ const faqSections: FaqSection[] = [
   },
   {
     title: "AI Inbox And Replies",
-    description: "How replies become AI-classified tasks, drafts, and hot handoffs.",
+    description: "How replies become AI-reviewed tasks, drafts, and hot leads.",
     items: [
       {
         question: "How do replies enter the platform?",
         answer: (
           <ul className="faq-list">
             <li>
-              <strong>Manual mode:</strong> paste the reply into the AI Inbox.
+              <strong>Manual mode:</strong> paste the reply into Replies.
             </li>
             <li>
-              <strong>Webhook mode:</strong> connect an inbound email parser to{" "}
+              <strong>Automatic mode:</strong> connect an inbound email parser to{" "}
               <code>/api/inbound/replies</code>
               with the <code>x-inbound-secret</code> header.
             </li>
@@ -298,7 +301,7 @@ const faqSections: FaqSection[] = [
         answer: (
           <p>
             Yes. When a lead replies, queued follow-ups for that lead are skipped so the conversation moves
-            into the AI Inbox instead of continuing an automated sequence.
+            into Replies instead of continuing an automated sequence.
           </p>
         )
       },
@@ -328,7 +331,7 @@ const faqSections: FaqSection[] = [
     ]
   },
   {
-    title: "Pipeline And Closing",
+    title: "Hot Leads And Closing",
     description: "How the app decides what deserves your attention.",
     items: [
       {
@@ -336,7 +339,7 @@ const faqSections: FaqSection[] = [
         answer: (
           <p>
             A hot lead is a reply with strong buying intent, such as asking for a meeting, price, proposal, or
-            clear next step. These appear in the pipeline so you can handle them personally.
+            clear next step. These appear in Hot Leads so you can handle them personally.
           </p>
         )
       },
@@ -357,12 +360,12 @@ const faqSections: FaqSection[] = [
         )
       },
       {
-        question: "How should I use the pipeline?",
+        question: "How should I use Hot Leads?",
         answer: (
           <p>
-            Start with <strong>Hot</strong> and <strong>Owner handling</strong>. Move deals as you work them:
-            engaged, proposal sent, follow up later, won, or lost. The pipeline is intentionally lightweight
-            so it helps you close without becoming a full CRM.
+            Start with <strong>Ready to contact</strong>. Move leads as you work them: proposal/pricing,
+            follow up later, won, or lost. Hot Leads is intentionally simple so it helps you close without
+            becoming a full CRM.
           </p>
         )
       }
@@ -378,7 +381,7 @@ const faqSections: FaqSection[] = [
         answer: (
           <ul className="faq-list">
             <li>
-              Never email a lead marked <strong>unsubscribed</strong>, <strong>suppressed</strong>, or
+              Never email a lead marked <strong>asked to stop</strong>, <strong>do not contact</strong>, or
               <strong> do not contact</strong>.
             </li>
             <li>Every campaign email must include an unsubscribe link.</li>
@@ -395,7 +398,7 @@ const faqSections: FaqSection[] = [
           <ul className="faq-list">
             <li>Never pretend it has a personal relationship with the lead.</li>
             <li>Never claim guaranteed revenue, guaranteed timelines, or fake results.</li>
-            <li>Never continue after an unsubscribe or complaint.</li>
+            <li>Never continue after someone asks to stop or complains.</li>
             <li>Never quote prices unless you added approved pricing rules.</li>
             <li>Never promise a meeting time or WhatsApp follow-up on your behalf.</li>
           </ul>
@@ -405,7 +408,7 @@ const faqSections: FaqSection[] = [
         question: "What must be verified before real sending?",
         answer: (
           <ul className="faq-list">
-            <li>SMTP credentials work.</li>
+            <li>Email sending credentials work.</li>
             <li>SPF, DKIM, and DMARC are configured for the sending domain.</li>
             <li>Reply-to inbox receives real replies.</li>
             <li>Unsubscribe links work.</li>
@@ -428,9 +431,9 @@ const faqSections: FaqSection[] = [
               Is the worker running with <code>npm run worker</code>?
             </li>
             <li>Is the campaign approved and scheduled?</li>
-            <li>Is the global kill switch off?</li>
+            <li>Is Pause all sending turned off?</li>
             <li>Is the sending account active?</li>
-            <li>Are leads suppressed, unsubscribed, bounced, or do-not-contact?</li>
+            <li>Are leads marked asked to stop, email failed, or do not contact?</li>
             <li>Have the daily, per-minute, or per-domain caps been reached?</li>
           </ul>
         )
@@ -473,15 +476,15 @@ export default function FaqPage() {
     <>
       <PageHeader
         eyebrow="Help Center"
-        title="FAQ and operating guide"
-        description="A simple owner guide for using the Virtuprose AI email sales agent without hurting deliverability, compliance, or lead quality."
+        title="Help"
+        description="A simple owner guide for using Virtuprose Sales Assistant without hurting deliverability, compliance, or lead quality."
         actions={
           <>
             <Link className="secondary-button" href="/settings">
               Check settings <ShieldCheck size={16} aria-hidden="true" />
             </Link>
             <Link className="button" href="/leads/import">
-              Import leads <ArrowRight size={16} aria-hidden="true" />
+              Add leads <ArrowRight size={16} aria-hidden="true" />
             </Link>
           </>
         }
@@ -492,10 +495,10 @@ export default function FaqPage() {
           <p className="eyebrow">Read this first</p>
           <h2>The safe operating loop</h2>
           <p>
-            <strong>Import leads</strong>, <strong>choose offer</strong>, <strong>approve campaign</strong>,{" "}
+            <strong>Add leads</strong>, <strong>choose service</strong>, <strong>approve campaign</strong>,{" "}
             <strong>send slowly</strong>, <strong>review replies</strong>, then{" "}
-            <strong>close hot leads</strong>. Keep dry-run on until real SMTP, domain records, and inbox
-            receipt are verified.
+            <strong>close hot leads</strong>. Keep test mode on until real email sending, domain records, and
+            inbox receipt are verified.
           </p>
         </div>
         <div className="faq-hero-icon" aria-hidden="true">
@@ -510,13 +513,13 @@ export default function FaqPage() {
               <h2>Quick Rules</h2>
               <p className="muted">Use these as the operating baseline.</p>
             </div>
-            <Rule label="Dry-run first" detail="Never start real volume before test delivery is proven." />
+            <Rule label="Test first" detail="Never start real volume before test delivery is proven." />
             <Rule label="Review AI" detail="AI drafts help you move faster, but owner review stays safest." />
+            <Rule label="Stop after reply" detail="A real reply moves the lead into Replies." />
             <Rule
-              label="Stop after reply"
-              detail="A real reply moves the lead into the inbox conversation."
+              label="Respect opt-outs"
+              detail="Unsubscribe, complaint, and do-not-contact rules always win."
             />
-            <Rule label="Respect opt-outs" detail="Unsubscribe, complaint, and suppression always win." />
             <Rule
               label="Close hot leads"
               detail="Pricing, proposal, or meeting intent should be handled by you."

@@ -23,16 +23,16 @@ import {
 
 export const leadStatusLabels: Record<LeadStatus, string> = {
   NEW: "Needs review",
-  VALIDATED: "Validated",
-  SUPPRESSED: "Suppressed",
-  QUEUED: "Queued",
+  VALIDATED: "Ready",
+  SUPPRESSED: "Do not contact",
+  QUEUED: "Waiting to send",
   CONTACTED: "Contacted",
   REPLIED: "Replied",
   INTERESTED: "Interested",
   HOT: "Hot",
   NOT_INTERESTED: "Not interested",
-  UNSUBSCRIBED: "Unsubscribed",
-  BOUNCED: "Bounced",
+  UNSUBSCRIBED: "Asked to stop",
+  BOUNCED: "Email failed",
   DO_NOT_CONTACT: "Do not contact",
   WON: "Won",
   LOST: "Lost"
@@ -58,13 +58,13 @@ export const suppressionReasonLabels: Record<SuppressionReason, string> = {
 
 export const campaignStatusLabels: Record<CampaignStatus, string> = {
   DRAFT: "Draft",
-  REVIEW_BLOCKED: "Review blocked",
+  REVIEW_BLOCKED: "Needs fixes",
   REVIEW_READY: "Ready to approve",
   APPROVED: "Approved",
-  SCHEDULED: "Scheduled",
+  SCHEDULED: "Ready to send",
   SENDING: "Sending",
   PAUSED: "Paused",
-  COMPLETED: "Completed",
+  COMPLETED: "Finished",
   ARCHIVED: "Archived"
 };
 
@@ -100,28 +100,28 @@ export const emailMessageStatusLabels: Record<EmailMessageStatus, string> = {
 
 export const replyIntentLabels: Record<ReplyIntent, string> = {
   HOT_LEAD: "Hot lead",
-  MEETING_REQUEST: "Meeting request",
-  PRICING_REQUEST: "Pricing request",
-  PORTFOLIO_REQUEST: "Portfolio request",
-  OBJECTION: "Objection or question",
+  MEETING_REQUEST: "Wants a meeting",
+  PRICING_REQUEST: "Asked for price",
+  PORTFOLIO_REQUEST: "Asked for examples",
+  OBJECTION: "Has a question",
   GENERAL_INTEREST: "Interested",
   NOT_INTERESTED: "Not interested",
-  UNSUBSCRIBE: "Unsubscribe",
+  UNSUBSCRIBE: "Stop contacting",
   OUT_OF_OFFICE: "Out of office",
   WRONG_PERSON: "Wrong person",
   COMPLAINT: "Complaint risk",
-  UNCLEAR: "Needs review"
+  UNCLEAR: "Unsure"
 };
 
 export const replyStatusLabels: Record<ReplyStatus, string> = {
   NEW: "New",
-  AI_CLASSIFIED: "Classified",
-  DRAFT_READY: "Draft ready",
-  OWNER_REVIEW: "Owner review",
-  HOT_HANDOFF: "Hot handoff",
+  AI_CLASSIFIED: "AI reviewed",
+  DRAFT_READY: "Ready reply",
+  OWNER_REVIEW: "Needs you",
+  HOT_HANDOFF: "Hot lead",
   AUTO_REPLIED: "AI replied",
   CLOSED: "Closed",
-  SUPPRESSED: "Suppressed"
+  SUPPRESSED: "Stopped"
 };
 
 export const replySentimentLabels: Record<ReplySentiment, string> = {
@@ -143,9 +143,9 @@ export const dealStageLabels: Record<DealStage, string> = {
   CONTACTED: "Contacted",
   REPLIED: "Replied",
   ENGAGED: "Engaged",
-  HOT: "Hot",
-  OWNER_HANDLING: "Owner handling",
-  PROPOSAL_SENT: "Proposal sent",
+  HOT: "Ready to contact",
+  OWNER_HANDLING: "Needs you",
+  PROPOSAL_SENT: "Proposal / pricing",
   FOLLOW_UP_LATER: "Follow up later",
   WON: "Won",
   LOST: "Lost"
@@ -159,16 +159,16 @@ export const dealStatusLabels: Record<DealStatus, string> = {
 };
 
 export const whatsappLeadStatusLabels: Record<WhatsappLeadStatus, string> = {
-  UNKNOWN: "Unknown",
-  OPTED_IN: "Opted in",
-  STOPPED: "Stopped",
-  INVALID: "Invalid"
+  UNKNOWN: "Needs permission",
+  OPTED_IN: "Allowed on WhatsApp",
+  STOPPED: "Stop contacting",
+  INVALID: "Needs fixing"
 };
 
 export const whatsappTemplateStatusLabels: Record<WhatsappTemplateStatus, string> = {
-  APPROVED: "Approved",
-  PENDING: "Pending",
-  REJECTED: "Rejected",
+  APPROVED: "Ready to use",
+  PENDING: "Waiting for approval",
+  REJECTED: "Needs changes",
   PAUSED: "Paused",
   DISABLED: "Disabled"
 };
@@ -183,13 +183,13 @@ export const whatsappTemplateCategoryLabels: Record<WhatsappTemplateCategory, st
 
 export const whatsappCampaignStatusLabels: Record<WhatsappCampaignStatus, string> = {
   DRAFT: "Draft",
-  REVIEW_BLOCKED: "Review blocked",
+  REVIEW_BLOCKED: "Needs fixes",
   REVIEW_READY: "Ready to approve",
   APPROVED: "Approved",
-  SCHEDULED: "Scheduled",
+  SCHEDULED: "Ready to send",
   SENDING: "Sending",
   PAUSED: "Paused",
-  COMPLETED: "Completed",
+  COMPLETED: "Finished",
   ARCHIVED: "Archived"
 };
 

@@ -57,28 +57,37 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
   return (
     <>
       <PageHeader
-        eyebrow="Lead Management"
-        title="Lead database"
-        description="Imported leads stay visible with their source, country, legal basis, status, tags, and activity before they can enter campaigns."
+        eyebrow="Add Leads"
+        title="Add and review leads"
+        description="Upload contacts, check who is ready, and keep people who should not be contacted out of campaigns."
         actions={
           <Link className="button" href="/leads/import">
-            <Download size={16} aria-hidden="true" /> Import CSV
+            <Download size={16} aria-hidden="true" /> Upload leads
           </Link>
         }
       />
 
+      <div className="section-tabs" aria-label="Lead views">
+        <Link className="section-tab section-tab-active" href="/leads">
+          All Leads
+        </Link>
+        <Link className="section-tab" href="/leads/import">
+          Upload Leads
+        </Link>
+      </div>
+
       <form className="toolbar" action="/leads">
         <label className="field" style={{ minWidth: 260 }}>
-          <span>Search leads</span>
+          <span>Find leads</span>
           <input
             className="input"
             name="q"
             defaultValue={params.q ?? ""}
-            placeholder="Email, company, source"
+            placeholder="Name, email, company, source"
           />
         </label>
         <label className="field" style={{ minWidth: 220 }}>
-          <span>Status</span>
+          <span>Contact status</span>
           <select className="select" name="status" defaultValue={params.status ?? ""}>
             <option value="">All statuses</option>
             {Object.values(LeadStatus).map((status) => (
@@ -89,7 +98,7 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
           </select>
         </label>
         <button className="secondary-button" type="submit">
-          <Search size={16} aria-hidden="true" /> Apply filters
+          <Search size={16} aria-hidden="true" /> Search
         </button>
       </form>
 
@@ -100,12 +109,12 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
               <tr>
                 <th>Lead</th>
                 <th>Company</th>
-                <th>Status</th>
-                <th>Source</th>
-                <th>WhatsApp</th>
-                <th>Legal basis</th>
+                <th>Contact status</th>
+                <th>Where from?</th>
+                <th>WhatsApp number</th>
+                <th>Why can we contact them?</th>
                 <th>Tags</th>
-                <th>Imported</th>
+                <th>Added</th>
               </tr>
             </thead>
             <tbody>
@@ -119,11 +128,11 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
                       <br />
                       <span className="muted">{lead.email}</span>
                     </td>
-                    <td>{lead.company || <span className="muted">Missing</span>}</td>
+                    <td>{lead.company || <span className="muted">Needs info</span>}</td>
                     <td>
                       <StatusBadge label={leadStatusLabels[lead.status]} status={lead.status} />
                     </td>
-                    <td>{lead.source || <span className="muted">Missing</span>}</td>
+                    <td>{lead.source || <span className="muted">Needs info</span>}</td>
                     <td>
                       {lead.phoneE164 ? (
                         <>
@@ -135,10 +144,10 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
                           />
                         </>
                       ) : (
-                        <span className="muted">No phone</span>
+                        <span className="muted">No WhatsApp number</span>
                       )}
                     </td>
-                    <td>{lead.legalBasis || <span className="muted">Missing</span>}</td>
+                    <td>{lead.legalBasis || <span className="muted">Needs info</span>}</td>
                     <td>
                       <div className="tag-list">
                         {lead.tags.length ? (
@@ -158,7 +167,9 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
               ) : (
                 <tr>
                   <td colSpan={8}>
-                    <div className="empty-state">No leads match the current filters.</div>
+                    <div className="empty-state">
+                      No leads found. Upload a CSV to add your first contacts.
+                    </div>
                   </td>
                 </tr>
               )}

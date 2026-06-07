@@ -1,0 +1,4 @@
+email,first_name,last_name,company,website,role,country,source,permission_reason,phone,whatsapp_opt_in,whatsapp_permission_source,tags
+carlos@example.com,Carlos,Alvarez,Example Co,https://example.com,Founder,Kuwait,LinkedIn,Business outreach,+96569984942,yes,Client gave number,"ai-agent, kuwait"
+sara@example.com,Sara,Khan,Growth Studio,https://growthstudio.example,Marketing Manager,UAE,Website form,Requested information,+971501234567,yes,Website form,"website, warm"
+omar@example.com,Omar,Hassan,Retail Plus,https://retailplus.example,Owner,Saudi Arabia,Referral,Referred by client,+966501234567,no,,"ecommerce, cold"

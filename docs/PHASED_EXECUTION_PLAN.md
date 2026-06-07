@@ -4,6 +4,26 @@ Source PRD: `docs/EMAIL_MARKETING_AI_AGENT_PRD.md`
 Product type: Internal single-user AI sales agent  
 Primary outcome: Import leads, send safe AI-assisted outreach, let AI manage early replies, and surface hot leads for owner closing.
 
+## Current Implementation Status
+
+As of 2026-06-07, the core internal product has been implemented and deployed on the VPS at `http://31.97.213.79`.
+
+Completed implementation areas:
+
+- Lead import and lead database.
+- Campaign builder.
+- Meta WhatsApp Cloud API template sends.
+- Reply/inbox and hot-lead workflow.
+- Owner-friendly UI simplification.
+- Dockerized app, worker, Postgres, and Redis deployment.
+
+Remaining production readiness items:
+
+- Add `OPENAI_API_KEY` for full AI reply quality.
+- Add a real domain and HTTPS for Meta webhooks.
+- Add SMTP credentials and email domain authentication before production email sending.
+- Add scheduled database backups.
+
 ## 1. Execution Strategy
 
 Build the smallest complete loop first:

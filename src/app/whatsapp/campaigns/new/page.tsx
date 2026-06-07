@@ -28,8 +28,8 @@ const variableOptions = [
 
 export default async function NewWhatsappCampaignPage({ searchParams }: PageProps) {
   const params = await searchParams;
-  const [offers, templates, leadCounts, eligibleCount] = await Promise.all([
-    prisma.offer.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
+  const [defaultOffer, templates, leadCounts, eligibleCount] = await Promise.all([
+    prisma.offer.findFirst({ where: { active: true }, orderBy: { createdAt: "asc" } }),
     prisma.whatsappTemplate.findMany({
       where: { active: true, status: WhatsappTemplateStatus.APPROVED },
       orderBy: { name: "asc" }
@@ -51,11 +51,11 @@ export default async function NewWhatsappCampaignPage({ searchParams }: PageProp
   return (
     <>
       <PageHeader
-        eyebrow="WhatsApp Campaign Builder"
-        title="Create template campaign"
-        description="Select an approved template, map variables to lead fields, and attach only opted-in WhatsApp leads."
+        eyebrow="Campaigns"
+        title="Create WhatsApp campaign"
+        description="Choose an approved WhatsApp message, select who should receive it, and review safety before sending."
         actions={
-          <Link className="secondary-button" href="/whatsapp/campaigns">
+          <Link className="secondary-button" href="/campaigns">
             <ArrowLeft size={16} aria-hidden="true" /> Back
           </Link>
         }
@@ -66,12 +66,24 @@ export default async function NewWhatsappCampaignPage({ searchParams }: PageProp
           <div className="panel-header">
             <div>
               <h2>Campaign setup</h2>
-              <p className="muted">Owner approval is required before the campaign can be created.</p>
+              <p className="muted">You approve the audience and message before the assistant starts.</p>
             </div>
           </div>
           <div className="panel-body">
-            {offers.length && selectedTemplate ? (
+            {defaultOffer && selectedTemplate ? (
               <form action={createWhatsappCampaign} className="stack">
+                <input type="hidden" name="offerId" value={defaultOffer.id} />
+                <div className="choice-grid" aria-label="Choose campaign type">
+                  <Link className="choice-card" href="/campaigns/new">
+                    <strong>Email</strong>
+                    <span>Use AI to create an email sequence.</span>
+                  </Link>
+                  <div className="choice-card choice-card-active">
+                    <strong>WhatsApp</strong>
+                    <span>Send an approved WhatsApp message template.</span>
+                  </div>
+                </div>
+
                 <label className="field">
                   <span>Campaign name</span>
                   <input className="input" name="name" required placeholder="WhatsApp website audit - June" />
@@ -79,17 +91,7 @@ export default async function NewWhatsappCampaignPage({ searchParams }: PageProp
 
                 <div className="form-grid">
                   <label className="field">
-                    <span>Virtuprose offer</span>
-                    <select className="select" name="offerId" required>
-                      {offers.map((offer) => (
-                        <option key={offer.id} value={offer.id}>
-                          {offer.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="field">
-                    <span>Approved template</span>
+                    <span>WhatsApp message</span>
                     <select className="select" name="templateId" defaultValue={selectedTemplate.id} required>
                       {templates.map((template) => (
                         <option key={template.id} value={template.id}>
@@ -98,15 +100,15 @@ export default async function NewWhatsappCampaignPage({ searchParams }: PageProp
                       ))}
                     </select>
                     <small>
-                      Variable fields below are shown for {selectedTemplate.name}. Refresh with the template
-                      link if changing templates.
+                      The personal words below come from {selectedTemplate.name}. Reopen this page after
+                      changing the message.
                     </small>
                   </label>
                 </div>
 
                 <div className="form-grid">
                   <label className="field">
-                    <span>Audience status</span>
+                    <span>Who should receive it?</span>
                     <select className="select" name="status" defaultValue={LeadStatus.VALIDATED}>
                       <option value="ALL">All eligible WhatsApp leads ({formatNumber(eligibleCount)})</option>
                       {Object.values(LeadStatus).map((status) => (
@@ -115,10 +117,10 @@ export default async function NewWhatsappCampaignPage({ searchParams }: PageProp
                         </option>
                       ))}
                     </select>
-                    <small>Phone, opt-in, and WhatsApp status are always required.</small>
+                    <small>Full phone number and WhatsApp permission are always required.</small>
                   </label>
                   <label className="field">
-                    <span>Maximum recipients</span>
+                    <span>How many people?</span>
                     <input
                       className="input"
                       name="maxRecipients"
@@ -132,18 +134,18 @@ export default async function NewWhatsappCampaignPage({ searchParams }: PageProp
 
                 <div className="form-grid">
                   <label className="field">
-                    <span>Tag filter</span>
+                    <span>Only leads with tag</span>
                     <input className="input" name="tag" placeholder="client, warm, ecommerce" />
                   </label>
                   <label className="field">
-                    <span>Country filter</span>
+                    <span>Only leads in country</span>
                     <input className="input" name="country" placeholder="Kuwait, UAE, United States" />
                   </label>
                 </div>
 
                 <div className="form-grid">
                   <label className="field">
-                    <span>Daily cap</span>
+                    <span>Daily sending limit</span>
                     <input
                       className="input"
                       name="dailyCap"
@@ -154,23 +156,25 @@ export default async function NewWhatsappCampaignPage({ searchParams }: PageProp
                     />
                   </label>
                   <label className="field">
-                    <span>Send window start</span>
+                    <span>Start time</span>
                     <input className="input" name="sendWindowStart" type="time" defaultValue="09:00" />
+                    <small>The assistant starts sending only after this time.</small>
                   </label>
                   <label className="field">
-                    <span>Send window end</span>
+                    <span>End time</span>
                     <input className="input" name="sendWindowEnd" type="time" defaultValue="17:00" />
+                    <small>The assistant stops starting new sends after this time.</small>
                   </label>
                 </div>
 
                 <div className="panel-subsection">
-                  <h3>Variable mapping</h3>
-                  <p className="muted">Map each Meta template variable to a known lead or offer field.</p>
+                  <h3>Personal words</h3>
+                  <p className="muted">Tell the assistant what to place inside each blank.</p>
                   {selectedTemplate.variables.length ? (
                     <div className="form-grid" style={{ marginTop: 10 }}>
                       {selectedTemplate.variables.map((variable) => (
                         <label className="field" key={variable}>
-                          <span>Variable {variable}</span>
+                          <span>Personal word {variable}</span>
                           <select className="select" name={`var:${variable}`} defaultValue="firstName">
                             {variableOptions.map(([value, label]) => (
                               <option key={value} value={value}>
@@ -188,8 +192,8 @@ export default async function NewWhatsappCampaignPage({ searchParams }: PageProp
 
                 <label className="field checkbox-field">
                   <input name="ownerApproval" type="checkbox" required />
-                  <span>I confirm this WhatsApp audience is opted in and approved for this template.</span>
-                  <small>Required before the platform creates campaign recipients.</small>
+                  <span>I confirm these people gave WhatsApp permission and this message is approved.</span>
+                  <small>Required before the assistant creates the campaign.</small>
                 </label>
 
                 <button className="button" type="submit">
@@ -197,9 +201,7 @@ export default async function NewWhatsappCampaignPage({ searchParams }: PageProp
                 </button>
               </form>
             ) : (
-              <div className="empty-state">
-                Add at least one active offer and one approved WhatsApp template before creating campaigns.
-              </div>
+              <div className="empty-state">Add one approved WhatsApp message before creating campaigns.</div>
             )}
           </div>
         </section>
@@ -207,17 +209,17 @@ export default async function NewWhatsappCampaignPage({ searchParams }: PageProp
         <aside className="panel">
           <div className="panel-header">
             <div>
-              <h2>Approval gates</h2>
-              <p className="muted">These are enforced again when scheduling.</p>
+              <h2>Before sending, we checked:</h2>
+              <p className="muted">These checks are enforced again before sending starts.</p>
             </div>
           </div>
           <div className="panel-body stack">
-            <Gate label="Template is approved in Meta" />
-            <Gate label="Every recipient has E.164 phone" />
-            <Gate label="WhatsApp opt-in is recorded" />
-            <Gate label="Stopped leads are excluded" />
-            <Gate label="Only template sends start outreach" />
-            <Gate label="AI replies stay inside the 24-hour window" />
+            <Gate label="The message is approved by WhatsApp" />
+            <Gate label="People without full phone numbers are skipped" />
+            <Gate label="Only people allowed on WhatsApp are included" />
+            <Gate label="People who asked to stop are skipped" />
+            <Gate label="The first message uses an approved template" />
+            <Gate label="AI only replies after the person messages back" />
           </div>
         </aside>
       </div>

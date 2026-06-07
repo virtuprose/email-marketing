@@ -25,9 +25,9 @@ export default async function NewCampaignPage() {
   return (
     <>
       <PageHeader
-        eyebrow="Campaign Builder"
-        title="Create AI campaign draft"
-        description="Choose what Virtuprose is selling, select a conservative audience, and generate an editable sequence. Nothing sends from Phase 2."
+        eyebrow="Campaigns"
+        title="Create email campaign"
+        description="Choose the service, select a safe audience, and let AI prepare an email campaign for your review."
         actions={
           <Link className="secondary-button" href="/campaigns">
             <ArrowLeft size={16} aria-hidden="true" /> Back
@@ -40,12 +40,23 @@ export default async function NewCampaignPage() {
           <div className="panel-header">
             <div>
               <h2>Campaign setup</h2>
-              <p className="muted">The draft will attach eligible leads and immediately run safety checks.</p>
+              <p className="muted">The assistant will only include people who are safe to contact.</p>
             </div>
           </div>
           <div className="panel-body">
             {offers.length ? (
               <form action={createCampaign} className="stack">
+                <div className="choice-grid" aria-label="Choose campaign type">
+                  <div className="choice-card choice-card-active">
+                    <strong>Email</strong>
+                    <span>Use AI to create an email sequence.</span>
+                  </div>
+                  <Link className="choice-card" href="/whatsapp/campaigns/new">
+                    <strong>WhatsApp</strong>
+                    <span>Send an approved WhatsApp message template.</span>
+                  </Link>
+                </div>
+
                 <label className="field">
                   <span>Campaign name</span>
                   <input
@@ -60,7 +71,7 @@ export default async function NewCampaignPage() {
 
                 <div className="form-grid">
                   <label className="field">
-                    <span>Virtuprose offer</span>
+                    <span>Service to promote</span>
                     <select className="select" name="offerId" required>
                       {offers.map((offer) => (
                         <option key={offer.id} value={offer.id}>
@@ -71,7 +82,7 @@ export default async function NewCampaignPage() {
                   </label>
 
                   <label className="field">
-                    <span>Objective</span>
+                    <span>Goal</span>
                     <select className="select" name="objective" defaultValue={CampaignObjective.AUDIT_OFFER}>
                       {Object.values(CampaignObjective).map((objective) => (
                         <option key={objective} value={objective}>
@@ -84,7 +95,7 @@ export default async function NewCampaignPage() {
 
                 <div className="form-grid">
                   <label className="field">
-                    <span>Audience status</span>
+                    <span>Who should receive it?</span>
                     <select className="select" name="status" defaultValue={LeadStatus.VALIDATED}>
                       <option value="ALL">All contactable statuses ({formatNumber(contactableCount)})</option>
                       {Object.values(LeadStatus).map((status) => (
@@ -94,12 +105,12 @@ export default async function NewCampaignPage() {
                       ))}
                     </select>
                     <small>
-                      Suppressed, bounced, unsubscribed, and do-not-contact leads are always excluded.
+                      People who bounced, opted out, or are marked do not contact are always skipped.
                     </small>
                   </label>
 
                   <label className="field">
-                    <span>Maximum recipients</span>
+                    <span>How many people?</span>
                     <input
                       className="input"
                       name="maxRecipients"
@@ -108,34 +119,31 @@ export default async function NewCampaignPage() {
                       max={5000}
                       defaultValue={100}
                     />
-                    <small>Start small until Phase 3 sending health and ramp controls exist.</small>
+                    <small>Start small until you confirm replies and delivery look good.</small>
                   </label>
                 </div>
 
                 <div className="form-grid">
                   <label className="field">
-                    <span>Tag filter</span>
+                    <span>Only leads with tag</span>
                     <input className="input" name="tag" placeholder="hot, ecommerce, founder" />
                   </label>
                   <label className="field">
-                    <span>Country filter</span>
+                    <span>Only leads in country</span>
                     <input className="input" name="country" placeholder="United States, Kuwait, UAE" />
                   </label>
                 </div>
 
                 <div className="alert">
-                  Approval is separate from sending. Phase 2 stores the draft and review result only; Phase 3
-                  adds throttled sending.
+                  You will review the message and approve it before anything is sent.
                 </div>
 
                 <button className="button" type="submit">
-                  <WandSparkles size={16} aria-hidden="true" /> Generate draft
+                  <WandSparkles size={16} aria-hidden="true" /> Create email draft
                 </button>
               </form>
             ) : (
-              <div className="empty-state">
-                Create or activate at least one offer before generating a campaign draft.
-              </div>
+              <div className="empty-state">Add at least one service before creating a campaign.</div>
             )}
           </div>
         </section>
@@ -143,17 +151,17 @@ export default async function NewCampaignPage() {
         <aside className="panel">
           <div className="panel-header">
             <div>
-              <h2>Approval gates</h2>
-              <p className="muted">A campaign cannot be approved with blockers.</p>
+              <h2>Before sending, we checked:</h2>
+              <p className="muted">These checks stay visible so you know what will happen.</p>
             </div>
           </div>
           <div className="panel-body stack">
-            <Gate label="Audience has eligible leads" />
-            <Gate label="No suppressed recipients attached" />
-            <Gate label="Lead source, country, and legal basis are present" />
-            <Gate label="Unsubscribe placeholder stays in every email" />
-            <Gate label="Sender identity is configured in Settings" />
-            <Gate label="No disallowed offer claims are used" />
+            <Gate label="There are people ready to contact" />
+            <Gate label="People who opted out are removed" />
+            <Gate label="Missing contact details are skipped" />
+            <Gate label="Every email includes an unsubscribe link" />
+            <Gate label="Your sender details are saved" />
+            <Gate label="The message avoids risky claims" />
           </div>
         </aside>
       </div>

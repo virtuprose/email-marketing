@@ -30,15 +30,15 @@ export default async function WhatsappPage() {
     <>
       <PageHeader
         eyebrow="WhatsApp"
-        title="WhatsApp command center"
-        description="Send approved Meta templates to opted-in clients, track delivery, and let AI qualify replies before owner handoff."
+        title="WhatsApp"
+        description="Send approved WhatsApp messages to people with permission, track delivery, and let AI qualify replies before handoff."
         actions={
           <div className="toolbar" style={{ marginBottom: 0 }}>
             <Link className="secondary-button" href="/whatsapp/templates">
-              Templates
+              Message Templates
             </Link>
             <Link className="button" href="/whatsapp/campaigns/new">
-              <Plus size={16} aria-hidden="true" /> New campaign
+              <Plus size={16} aria-hidden="true" /> Create Campaign
             </Link>
           </div>
         }
@@ -47,23 +47,18 @@ export default async function WhatsappPage() {
       <section className="grid grid-4" aria-label="WhatsApp metrics">
         <Metric
           icon={<MessageCircle size={18} />}
-          label="Approved templates"
+          label="Ready messages"
           value={templates}
-          note="Stored locally"
+          note="Approved by WhatsApp"
         />
         <Metric icon={<Send size={18} />} label="Campaigns" value={campaigns} note="Drafts and sends" />
         <Metric
           icon={<Sparkles size={18} />}
-          label="Eligible leads"
+          label="Ready leads"
           value={eligibleLeads}
-          note="Phone + opt-in"
+          note="Phone + permission"
         />
-        <Metric
-          icon={<TriangleAlert size={18} />}
-          label="Hot handoffs"
-          value={hotReplies}
-          note="Needs owner"
-        />
+        <Metric icon={<TriangleAlert size={18} />} label="Hot leads" value={hotReplies} note="Needs you" />
       </section>
 
       <section className="grid grid-2" style={{ marginTop: 16 }}>
@@ -72,31 +67,32 @@ export default async function WhatsappPage() {
             <div>
               <h2>Readiness</h2>
               <p className="muted">
-                Connect Meta Cloud API and keep dry-run on until the first campaign is reviewed.
+                Keep test mode on until your first WhatsApp message is reviewed and tested.
               </p>
             </div>
           </div>
           <div className="panel-body stack">
             <div className="profile-row">
-              <span>Meta credentials</span>
+              <span>WhatsApp connection</span>
               <StatusBadge
                 label={metaReady ? "Configured" : "Missing"}
                 status={metaReady ? "ACTIVE" : "NOT_CONFIGURED"}
               />
             </div>
             <div className="profile-row">
-              <span>Meta send mode</span>
+              <span>Send mode</span>
               <StatusBadge
-                label={dryRun ? "Dry-run" : "Live sending"}
+                label={dryRun ? "Test mode" : "Live sending"}
                 status={dryRun ? "WARNING" : "ACTIVE"}
               />
             </div>
             <div className="profile-row">
-              <span>Active jobs</span>
+              <span>Campaigns sending</span>
               <span>{formatNumber(activeJobs)}</span>
             </div>
             <div className="alert">
-              WhatsApp sends are blocked unless the lead has an E.164 phone number, opt-in, and no stop flag.
+              WhatsApp sends are blocked unless the lead has a full phone number, permission, and has not
+              asked to stop.
             </div>
           </div>
         </div>
@@ -111,20 +107,22 @@ export default async function WhatsappPage() {
           <div className="panel-body stack">
             <Link className="reply-list-item" href="/whatsapp/templates">
               <span className="reply-list-main">
-                <strong>1. Add approved templates</strong>
-                <span>Store Meta template name, variables, language, preview, and approval status.</span>
+                <strong>1. Add approved messages</strong>
+                <span>
+                  Save the WhatsApp message name, language, personal words, preview, and approval status.
+                </span>
               </span>
             </Link>
             <Link className="reply-list-item" href="/whatsapp/campaigns/new">
               <span className="reply-list-main">
-                <strong>2. Build template campaign</strong>
-                <span>Select offer, audience, variables, cap, and owner approval.</span>
+                <strong>2. Create WhatsApp campaign</strong>
+                <span>Select service, audience, personal words, sending limit, and owner approval.</span>
               </span>
             </Link>
             <Link className="reply-list-item" href="/whatsapp/inbox">
               <span className="reply-list-main">
-                <strong>3. Work AI-qualified replies</strong>
-                <span>Review hot handoffs, AI summaries, and sent drafts.</span>
+                <strong>3. Review AI-qualified replies</strong>
+                <span>Review hot leads, AI summaries, and suggested replies.</span>
               </span>
             </Link>
           </div>

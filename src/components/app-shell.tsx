@@ -1,35 +1,18 @@
 "use client";
 
-import {
-  BarChart3,
-  Bot,
-  CircleHelp,
-  Inbox,
-  Library,
-  ListFilter,
-  Send,
-  Settings,
-  ShieldAlert,
-  MessageCircle,
-  UsersRound
-} from "lucide-react";
+import { CircleHelp, Flame, Home, Inbox, Send, Settings, UsersRound } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import clsx from "clsx";
 
 const navItems = [
-  { href: "/", label: "Command Center", icon: BarChart3, exact: true },
-  { href: "/leads", label: "Leads", icon: UsersRound, exact: true },
-  { href: "/leads/import", label: "Import", icon: ListFilter },
-  { href: "/offers", label: "Offers", icon: Library },
+  { href: "/", label: "Home", icon: Home, exact: true },
+  { href: "/leads", label: "Add Leads", icon: UsersRound },
   { href: "/campaigns", label: "Campaigns", icon: Send },
-  { href: "/whatsapp", label: "WhatsApp", icon: MessageCircle },
-  { href: "/suppression", label: "Suppression", icon: ShieldAlert },
-  { href: "/inbox", label: "AI Inbox", icon: Inbox },
-  { href: "/pipeline", label: "Pipeline", icon: Bot },
-  { href: "/reports", label: "Reports", icon: BarChart3 },
-  { href: "/faq", label: "FAQ", icon: CircleHelp },
+  { href: "/inbox", label: "Replies", icon: Inbox },
+  { href: "/pipeline", label: "Hot Leads", icon: Flame },
+  { href: "/faq", label: "Help", icon: CircleHelp },
   { href: "/settings", label: "Settings", icon: Settings }
 ];
 
@@ -46,8 +29,8 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div className="brand">
           <div className="brand-mark">V</div>
           <div>
-            <p className="brand-title">Virtuprose Agent</p>
-            <p className="brand-subtitle">AI inbox and pipeline</p>
+            <p className="brand-title">Virtuprose Sales Assistant</p>
+            <p className="brand-subtitle">AI follows up. You close.</p>
           </div>
         </div>
 
@@ -72,8 +55,11 @@ export function AppShell({ children }: { children: ReactNode }) {
         </nav>
 
         <div className="sidebar-note">
-          <strong>Safety first</strong>
-          <p>Suppression, source, and legal-basis checks are built before campaign sending.</p>
+          <strong>Safe by default</strong>
+          <p>
+            The assistant skips people who opted out, checks missing contact details, and asks before live
+            sends.
+          </p>
         </div>
       </aside>
 

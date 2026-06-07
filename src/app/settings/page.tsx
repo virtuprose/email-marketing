@@ -46,17 +46,17 @@ export default async function SettingsPage() {
     <>
       <PageHeader
         eyebrow="Settings"
-        title="Compliance, sending, and AI controls"
-        description="Configure legal identity, SMTP, reply ingestion, AI fallbacks, and emergency controls before real outreach volume."
+        title="Settings"
+        description="Set your business details, sending safety, WhatsApp connection, and AI handoff rules."
       />
 
       <div className="grid grid-2">
         <section className="panel">
           <div className="panel-header">
             <div>
-              <h2>Sender identity</h2>
+              <h2>Business Profile</h2>
               <p className="muted">
-                Use real business details before any production campaign leaves the system.
+                These details appear in your emails and help keep outreach clear and trustworthy.
               </p>
             </div>
           </div>
@@ -87,7 +87,7 @@ export default async function SettingsPage() {
               </div>
 
               <label className="field">
-                <span>Physical mailing address</span>
+                <span>Business address</span>
                 <textarea
                   className="textarea"
                   name="physicalAddress"
@@ -99,7 +99,7 @@ export default async function SettingsPage() {
               </label>
 
               <label className="field">
-                <span>Unsubscribe base URL</span>
+                <span>Unsubscribe page</span>
                 <input
                   className="input"
                   name="unsubscribeUrl"
@@ -108,26 +108,24 @@ export default async function SettingsPage() {
                   defaultValue={compliance.unsubscribeUrl ?? ""}
                   placeholder="https://virtuprose.com/unsubscribe"
                 />
-                <small>Phase 3 generates recipient-specific unsubscribe links at send time.</small>
+                <small>The assistant adds the correct unsubscribe link when sending emails.</small>
               </label>
 
               <button className="button" type="submit">
-                <Save size={16} aria-hidden="true" /> Save identity
+                <Save size={16} aria-hidden="true" /> Save business profile
               </button>
             </form>
           </div>
         </section>
 
-        <section className="panel">
-          <div className="panel-header">
+        <details className="panel advanced-settings">
+          <summary className="panel-summary">
             <div>
-              <h2>SMTP account</h2>
-              <p className="muted">
-                Dry-run is safe for local QA. Turn it off only after SMTP env vars are set.
-              </p>
+              <h2>Advanced email setup</h2>
+              <p className="muted">Open this only when changing the email sending account or limits.</p>
             </div>
             <StatusBadge label={sendingAccountStatusLabels[account.status]} status={account.status} />
-          </div>
+          </summary>
           <div className="panel-body">
             <form action={updateSendingAccount} className="stack">
               <input type="hidden" name="id" value={account.id} />
@@ -157,8 +155,8 @@ export default async function SettingsPage() {
                 </label>
                 <label className="field checkbox-field">
                   <input name="dryRun" type="checkbox" defaultChecked={account.dryRun} />
-                  <span>Dry-run mode</span>
-                  <small>Queue and log sends without contacting SMTP.</small>
+                  <span>Test mode</span>
+                  <small>When this is on, emails are recorded but not actually sent.</small>
                 </label>
               </div>
 
@@ -184,7 +182,7 @@ export default async function SettingsPage() {
 
               <div className="form-grid">
                 <label className="field">
-                  <span>Daily cap</span>
+                  <span>Daily sending limit</span>
                   <input
                     className="input"
                     name="dailyCap"
@@ -194,7 +192,7 @@ export default async function SettingsPage() {
                   />
                 </label>
                 <label className="field">
-                  <span>Per-minute cap</span>
+                  <span>Per-minute sending limit</span>
                   <input
                     className="input"
                     name="perMinuteCap"
@@ -204,7 +202,7 @@ export default async function SettingsPage() {
                   />
                 </label>
                 <label className="field">
-                  <span>Per-domain daily cap</span>
+                  <span>Daily limit for same company email domain</span>
                   <input
                     className="input"
                     name="perDomainDailyCap"
@@ -214,7 +212,7 @@ export default async function SettingsPage() {
                   />
                 </label>
                 <label className="field">
-                  <span>Minimum delay seconds</span>
+                  <span>Delay between sends</span>
                   <input
                     className="input"
                     name="minDelaySeconds"
@@ -227,28 +225,26 @@ export default async function SettingsPage() {
 
               <div className={account.dryRun || smtpPassConfigured ? "alert success-alert" : "alert"}>
                 {account.dryRun
-                  ? "Dry-run is active. Scheduling will create queue jobs and mark messages sent without external delivery."
+                  ? "Test mode is on. Nothing will be sent by email."
                   : smtpPassConfigured
-                    ? "SMTP password is configured in the environment."
-                    : "SMTP password is missing. Set SMTP_PASS before disabling dry-run."}
+                    ? "Email sending password is configured."
+                    : "Email sending password is missing. Keep test mode on until it is added."}
               </div>
 
               <button className="button" type="submit">
-                <Save size={16} aria-hidden="true" /> Save SMTP account
+                <Save size={16} aria-hidden="true" /> Save email setup
               </button>
             </form>
           </div>
-        </section>
+        </details>
       </div>
 
       <div className="grid grid-2" style={{ marginTop: 16 }}>
         <section className="panel">
           <div className="panel-header">
             <div>
-              <h2>Test send</h2>
-              <p className="muted">
-                Uses the current sending mode. In dry-run, it records a test event only.
-              </p>
+              <h2>Email test</h2>
+              <p className="muted">Send one test email to confirm the account before a campaign.</p>
             </div>
             <Send size={18} aria-hidden="true" />
           </div>
@@ -260,7 +256,7 @@ export default async function SettingsPage() {
                 <input className="input" name="to" type="email" required placeholder="you@virtuprose.com" />
               </label>
               <button className="secondary-button" type="submit">
-                Send test
+                Send test to me
               </button>
               {account.lastTestAt ? (
                 <p className="muted">Last test ran {account.lastTestAt.toLocaleString()}.</p>
@@ -272,29 +268,25 @@ export default async function SettingsPage() {
         <section className="panel">
           <div className="panel-header">
             <div>
-              <h2>Readiness and kill switch</h2>
-              <p className="muted">These controls explain why sending may be paused.</p>
+              <h2>Sending Safety</h2>
+              <p className="muted">These controls explain why sending may be paused or blocked.</p>
             </div>
             <ShieldCheck size={18} aria-hidden="true" />
           </div>
           <div className="panel-body stack">
             <ReadinessRow label="Sender name" ready={Boolean(compliance.senderName)} />
             <ReadinessRow label="Sender email" ready={Boolean(compliance.senderEmail)} />
-            <ReadinessRow label="Physical address" ready={Boolean(compliance.physicalAddress)} />
+            <ReadinessRow label="Business address" ready={Boolean(compliance.physicalAddress)} />
             <ReadinessRow
-              label="OpenAI campaign generation"
+              label="Campaign writing AI"
               ready={openAiConfigured}
               fallback="Local fallback active"
             />
+            <ReadinessRow label="Reply AI" ready={openAiConfigured} fallback="Local classifier active" />
             <ReadinessRow
-              label="OpenAI reply agent"
-              ready={openAiConfigured}
-              fallback="Local classifier active"
-            />
-            <ReadinessRow
-              label="Inbound webhook secret"
+              label="Automatic reply connection"
               ready={inboundSecretConfigured}
-              fallback="Manual reply import only"
+              fallback="Manual reply import"
             />
             <ReadinessRow
               label="Reply-to inbox"
@@ -302,91 +294,86 @@ export default async function SettingsPage() {
               fallback="Set reply-to email"
             />
             <ReadinessRow
-              label="SMTP password"
+              label="Email sending password"
               ready={smtpPassConfigured || account.dryRun}
-              fallback="Dry-run required"
+              fallback="Use test mode"
             />
-            <ReadinessRow
-              label="Meta WhatsApp"
-              ready={metaConfigured || metaDryRun}
-              fallback="Missing Meta env"
-            />
+            <ReadinessRow label="WhatsApp" ready={metaConfigured || metaDryRun} fallback="Needs setup" />
 
             <form action={updateSendingControl} className="kill-switch">
               <label className="checkbox-field">
                 <input name="killSwitch" type="checkbox" defaultChecked={Boolean(control.killSwitch)} />
-                <span>Global kill switch</span>
+                <span>Pause all sending</span>
               </label>
               <button className={control.killSwitch ? "button" : "danger-button"} type="submit">
                 <Siren size={16} aria-hidden="true" />
-                {control.killSwitch ? "Save control" : "Pause all sending"}
+                {control.killSwitch ? "Save pause setting" : "Pause all sending"}
               </button>
             </form>
           </div>
         </section>
       </div>
 
-      <section className="panel" style={{ marginTop: 16 }}>
-        <div className="panel-header">
+      <details className="panel advanced-settings" style={{ marginTop: 16 }}>
+        <summary className="panel-summary">
           <div>
-            <h2>Inbound reply endpoint</h2>
+            <h2>Advanced automatic reply setup</h2>
             <p className="muted">
-              Use this when you connect an email provider inbound parser. Until then, paste replies in the AI
-              inbox.
+              Use this only when connecting an email provider to receive replies automatically.
             </p>
           </div>
-        </div>
+        </summary>
         <div className="panel-body stack">
           <div className="profile-row">
-            <span>Webhook URL</span>
+            <span>Reply connection URL</span>
             <span>{`${process.env.APP_BASE_URL || "http://localhost:3000"}/api/inbound/replies`}</span>
           </div>
           <div className="profile-row">
-            <span>Header</span>
+            <span>Security header</span>
             <span>x-inbound-secret</span>
           </div>
           <div className={inboundSecretConfigured ? "alert success-alert" : "alert"}>
             {inboundSecretConfigured
-              ? "Inbound webhook is protected by INBOUND_WEBHOOK_SECRET."
-              : "Set INBOUND_WEBHOOK_SECRET before exposing the inbound endpoint publicly."}
+              ? "Automatic reply connection is protected."
+              : "Add the reply connection secret before using this publicly."}
           </div>
         </div>
-      </section>
+      </details>
 
-      <section className="panel" style={{ marginTop: 16 }}>
-        <div className="panel-header">
+      <details className="panel advanced-settings" style={{ marginTop: 16 }}>
+        <summary className="panel-summary">
           <div>
-            <h2>Meta WhatsApp endpoint</h2>
-            <p className="muted">Use this callback URL in Meta after the app is reachable publicly.</p>
+            <h2>Advanced WhatsApp setup</h2>
+            <p className="muted">Open this when connecting WhatsApp or checking the callback URL.</p>
           </div>
-        </div>
+        </summary>
         <div className="panel-body stack">
           <div className="profile-row">
-            <span>Callback URL</span>
+            <span>WhatsApp callback URL</span>
             <span>{`${appBaseUrl()}${WHATSAPP_WEBHOOK_PATH}`}</span>
           </div>
           <div className="profile-row">
-            <span>Meta mode</span>
-            <StatusBadge label={metaDryRun ? "Dry-run" : "Live"} status={metaDryRun ? "DRAFT" : "PASS"} />
+            <span>WhatsApp mode</span>
+            <StatusBadge label={metaDryRun ? "Test mode" : "Live"} status={metaDryRun ? "DRAFT" : "PASS"} />
           </div>
           <div className="profile-row">
-            <span>Signature validation</span>
+            <span>Message security check</span>
             <StatusBadge
               label={metaSignatureValidation ? "Enabled" : "Disabled"}
               status={metaSignatureValidation ? "PASS" : "WARNING"}
             />
           </div>
           <div className="profile-row">
-            <span>Verify token</span>
+            <span>Connection token</span>
             <span>{process.env.META_WEBHOOK_VERIFY_TOKEN ? "Configured" : "Missing"}</span>
           </div>
           <div className={metaConfigured ? "alert success-alert" : "alert"}>
             {metaConfigured
-              ? "META_WHATSAPP_ACCESS_TOKEN, META_PHONE_NUMBER_ID, and META_WABA_ID are configured."
-              : "Set Meta env vars before disabling META_WHATSAPP_DRY_RUN."}
+              ? "WhatsApp is configured."
+              : "Add WhatsApp connection values before turning live mode on."}
           </div>
         </div>
-      </section>
+      </details>
     </>
   );
 }

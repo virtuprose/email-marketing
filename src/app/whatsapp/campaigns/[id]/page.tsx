@@ -90,21 +90,26 @@ export default async function WhatsappCampaignDetailPage({ params }: PageProps) 
           <div className="panel-header">
             <div>
               <h2>Review</h2>
-              <p className="muted">This campaign can only send through the approved Meta template.</p>
+              <p className="muted">This campaign can only send through an approved WhatsApp message.</p>
             </div>
             <StatusBadge label={whatsappCampaignStatusLabels[campaign.status]} status={campaign.status} />
           </div>
           <div className="panel-body stack">
             <div className="profile-list">
-              <ProfileRow label="Offer" value={campaign.offer.name} />
-              <ProfileRow label="Template" value={campaign.template.name} />
-              <ProfileRow label="Meta template name" value={campaign.template.metaTemplateName} />
+              <ProfileRow label="Service" value={campaign.offer.name} />
+              <ProfileRow label="WhatsApp message" value={campaign.template.name} />
+              <details className="advanced-inline">
+                <summary>Advanced details</summary>
+                <div className="profile-list" style={{ marginTop: 10 }}>
+                  <ProfileRow label="Template name in WhatsApp" value={campaign.template.metaTemplateName} />
+                </div>
+              </details>
               <ProfileRow
                 label="Template status"
                 value={whatsappTemplateStatusLabels[campaign.template.status]}
               />
-              <ProfileRow label="Recipients" value={formatNumber(campaign.recipients.length)} />
-              <ProfileRow label="Daily cap" value={`${formatNumber(campaign.dailyCap)}/day`} />
+              <ProfileRow label="People" value={formatNumber(campaign.recipients.length)} />
+              <ProfileRow label="Daily sending limit" value={`${formatNumber(campaign.dailyCap)}/day`} />
             </div>
 
             {campaign.template.bodyPreview ? (
@@ -124,7 +129,7 @@ export default async function WhatsappCampaignDetailPage({ params }: PageProps) 
                 <form action={scheduleApprovedWhatsappCampaign}>
                   <input type="hidden" name="campaignId" value={campaign.id} />
                   <button className="button" type="submit">
-                    <Send size={16} aria-hidden="true" /> Schedule send
+                    <Send size={16} aria-hidden="true" /> Start sending
                   </button>
                 </form>
               ) : null}

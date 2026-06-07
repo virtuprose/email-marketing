@@ -146,7 +146,7 @@ const whatsappTemplateSchema = z.object({
 
 const whatsappCampaignSchema = z.object({
   name: z.string().min(3),
-  offerId: z.string().min(1),
+  offerId: z.string().optional(),
   templateId: z.string().min(1),
   status: z.nativeEnum(LeadStatus).or(z.literal("ALL")),
   tag: z.string().optional(),
@@ -1106,7 +1106,7 @@ export async function sendWhatsappTemplateTest(formData: FormData) {
 
   revalidatePath("/whatsapp/templates");
   redirect(
-    "/whatsapp/templates?testOk=WhatsApp%20test%20send%20recorded.%20Check%20dry-run%20or%20Meta%20logs."
+    "/whatsapp/templates?testOk=WhatsApp%20test%20send%20recorded.%20Check%20test%20mode%20or%20WhatsApp%20logs."
   );
 }
 
@@ -1175,7 +1175,7 @@ export async function syncWhatsappTemplateFromMeta(formData: FormData) {
 export async function createWhatsappCampaign(formData: FormData) {
   const parsed = whatsappCampaignSchema.parse({
     name: formData.get("name"),
-    offerId: formData.get("offerId"),
+    offerId: String(formData.get("offerId") ?? "").trim() || undefined,
     templateId: formData.get("templateId"),
     status: formData.get("status"),
     tag: String(formData.get("tag") ?? "").trim() || undefined,
@@ -1196,10 +1196,14 @@ export async function createWhatsappCampaign(formData: FormData) {
     maxRecipients: parsed.maxRecipients
   };
   const [offer, template] = await Promise.all([
-    prisma.offer.findUnique({ where: { id: parsed.offerId } }),
+    parsed.offerId
+      ? prisma.offer.findUnique({ where: { id: parsed.offerId } })
+      : prisma.offer.findFirst({ where: { active: true }, orderBy: { createdAt: "asc" } }),
     prisma.whatsappTemplate.findUnique({ where: { id: parsed.templateId } })
   ]);
-  if (!offer || !offer.active) throw new Error("Select an active offer before creating a WhatsApp campaign.");
+  if (!offer || !offer.active) {
+    throw new Error("Add one active service internally before creating a WhatsApp campaign.");
+  }
   if (!template || !template.active) throw new Error("Select an active WhatsApp template.");
 
   const variableMapping = Object.fromEntries(
@@ -1216,7 +1220,7 @@ export async function createWhatsappCampaign(formData: FormData) {
     data: {
       name: parsed.name,
       status: reviewBlocked ? WhatsappCampaignStatus.REVIEW_BLOCKED : WhatsappCampaignStatus.REVIEW_READY,
-      offerId: parsed.offerId,
+      offerId: offer.id,
       templateId: parsed.templateId,
       audienceFilter: filter as unknown as Prisma.InputJsonObject,
       variableMapping: variableMapping as Prisma.InputJsonObject,

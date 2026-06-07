@@ -32,11 +32,11 @@ export default async function WhatsappTemplatesPage({ searchParams }: WhatsappTe
   return (
     <>
       <PageHeader
-        eyebrow="WhatsApp Templates"
-        title="Meta Cloud API templates"
-        description="Create local template records, submit text-body templates to Meta, sync approval, and test the exact campaign payload."
+        eyebrow="Campaigns"
+        title="WhatsApp Message Templates"
+        description="Create reusable WhatsApp messages, send them for approval, and test them before using them in campaigns."
         actions={
-          <Link className="secondary-button" href="/whatsapp">
+          <Link className="secondary-button" href="/campaigns">
             <ArrowLeft size={16} aria-hidden="true" /> Back
           </Link>
         }
@@ -58,10 +58,8 @@ export default async function WhatsappTemplatesPage({ searchParams }: WhatsappTe
         <section className="panel">
           <div className="panel-header">
             <div>
-              <h2>Add template</h2>
-              <p className="muted">
-                Use Meta&apos;s lowercase template name. Submit from here or sync after approval.
-              </p>
+              <h2>Add WhatsApp message</h2>
+              <p className="muted">WhatsApp must approve business-first messages before you can send them.</p>
             </div>
           </div>
           <div className="panel-body">
@@ -72,7 +70,7 @@ export default async function WhatsappTemplatesPage({ searchParams }: WhatsappTe
               </label>
               <div className="form-grid">
                 <label className="field">
-                  <span>Meta template name</span>
+                  <span>Template name in WhatsApp</span>
                   <input
                     className="input"
                     name="metaTemplateName"
@@ -80,7 +78,7 @@ export default async function WhatsappTemplatesPage({ searchParams }: WhatsappTe
                     placeholder="website_audit_intro"
                     pattern="[a-z0-9_]+"
                   />
-                  <small>Lowercase letters, numbers, and underscores only.</small>
+                  <small>Use lowercase letters, numbers, and underscores only.</small>
                 </label>
                 <label className="field">
                   <span>Language</span>
@@ -114,18 +112,18 @@ export default async function WhatsappTemplatesPage({ searchParams }: WhatsappTe
                 </label>
               </div>
               <label className="field">
-                <span>Variables</span>
+                <span>Personal words</span>
                 <textarea className="textarea" name="variables" placeholder={"1\n2\ncompany"} />
-                <small>One variable per line. Meta body variables normally use 1, 2, 3.</small>
+                <small>One per line. These are the words the assistant fills in, like name or company.</small>
               </label>
               <label className="field">
-                <span>Preview text</span>
+                <span>Message text</span>
                 <textarea
                   className="textarea"
                   name="bodyPreview"
                   placeholder="Hi {{1}}, quick question about {{2}}..."
                 />
-                <small>This text is submitted to Meta for text-body template approval.</small>
+                <small>This is what WhatsApp reviews before the message can be used.</small>
               </label>
               <label className="field checkbox-field">
                 <input name="active" type="checkbox" defaultChecked />
@@ -133,7 +131,7 @@ export default async function WhatsappTemplatesPage({ searchParams }: WhatsappTe
                 <small>Inactive templates cannot be used for new campaigns.</small>
               </label>
               <button className="button" type="submit">
-                <Save size={16} aria-hidden="true" /> Save template
+                <Save size={16} aria-hidden="true" /> Save message
               </button>
             </form>
           </div>
@@ -142,8 +140,8 @@ export default async function WhatsappTemplatesPage({ searchParams }: WhatsappTe
         <section className="panel">
           <div className="panel-header">
             <div>
-              <h2>Templates</h2>
-              <p className="muted">Only active approved templates should be used for production sending.</p>
+              <h2>Saved messages</h2>
+              <p className="muted">Use messages marked “Ready to use” for live campaigns.</p>
             </div>
           </div>
           <div className="panel-body stack">
@@ -168,10 +166,19 @@ export default async function WhatsappTemplatesPage({ searchParams }: WhatsappTe
                         value={whatsappTemplateCategoryLabels[template.category]}
                       />
                       <ProfileRow label="Language" value={template.language} />
-                      <ProfileRow label="Meta template ID" value={template.metaTemplateId || "Not synced"} />
-                      <ProfileRow label="Variables" value={template.variables.join(", ") || "None"} />
+                      <ProfileRow label="Personal words" value={template.variables.join(", ") || "None"} />
                       <ProfileRow label="Created" value={formatDate(template.createdAt)} />
                     </div>
+                    <details className="advanced-inline">
+                      <summary>Advanced details</summary>
+                      <div className="profile-list" style={{ marginTop: 10 }}>
+                        <ProfileRow
+                          label="WhatsApp template ID"
+                          value={template.metaTemplateId || "Not synced"}
+                        />
+                        <ProfileRow label="Template name in WhatsApp" value={template.metaTemplateName} />
+                      </div>
+                    </details>
                     {template.bodyPreview ? (
                       <pre className="email-preview">{template.bodyPreview}</pre>
                     ) : null}
@@ -179,20 +186,20 @@ export default async function WhatsappTemplatesPage({ searchParams }: WhatsappTe
                       <form action={submitWhatsappTemplateToMeta}>
                         <input type="hidden" name="templateId" value={template.id} />
                         <button className="secondary-button" type="submit">
-                          <UploadCloud size={16} aria-hidden="true" /> Submit to Meta
+                          <UploadCloud size={16} aria-hidden="true" /> Send for WhatsApp approval
                         </button>
                       </form>
                       <form action={syncWhatsappTemplateFromMeta}>
                         <input type="hidden" name="templateId" value={template.id} />
                         <button className="secondary-button" type="submit">
-                          <RefreshCcw size={16} aria-hidden="true" /> Sync status
+                          <RefreshCcw size={16} aria-hidden="true" /> Check approval
                         </button>
                       </form>
                     </div>
                     <form action={sendWhatsappTemplateTest} className="stack">
                       <input type="hidden" name="templateId" value={template.id} />
                       <label className="field">
-                        <span>Test phone</span>
+                        <span>Send test to</span>
                         <input
                           className="input"
                           name="toPhoneE164"
@@ -202,23 +209,23 @@ export default async function WhatsappTemplatesPage({ searchParams }: WhatsappTe
                           placeholder="+96560000000"
                           required
                         />
-                        <small>Use full international format with + and country code.</small>
+                        <small>Add the full phone number with country code.</small>
                       </label>
                       {template.variables.map((variable) => (
                         <label className="field" key={variable}>
-                          <span>Test value for {variable}</span>
+                          <span>Test word for {variable}</span>
                           <input className="input" name={`testVar:${variable}`} placeholder="Test value" />
                         </label>
                       ))}
                       <button className="secondary-button" type="submit">
-                        <Send size={16} aria-hidden="true" /> Test send
+                        <Send size={16} aria-hidden="true" /> Send test to me
                       </button>
                     </form>
                   </div>
                 </details>
               ))
             ) : (
-              <div className="empty-state">Add a Meta template first.</div>
+              <div className="empty-state">Add your first WhatsApp message template.</div>
             )}
           </div>
         </section>

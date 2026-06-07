@@ -15,18 +15,18 @@ export default async function SuppressionPage() {
   return (
     <>
       <PageHeader
-        eyebrow="Suppression"
-        title="Do-not-contact list"
-        description="Suppression is checked before future sends. Add unsubscribes, complaints, hard bounces, manual blocks, risky domains, and competitors here."
+        eyebrow="Settings"
+        title="Do Not Contact"
+        description="People added here will be skipped before future sends. Use this for opt-outs, complaints, failed emails, manual blocks, risky domains, and competitors."
       />
 
       <div className="grid grid-2">
         <section className="panel">
           <div className="panel-header">
             <div>
-              <h2>Add suppression</h2>
+              <h2>Add someone to Do Not Contact</h2>
               <p className="muted">
-                Suppressed leads are immediately marked blocked if they already exist in the database.
+                Existing leads are immediately marked blocked if they are already in your list.
               </p>
             </div>
           </div>
@@ -53,7 +53,7 @@ export default async function SuppressionPage() {
                 </select>
               </label>
               <label className="field">
-                <span>Source</span>
+                <span>Where from?</span>
                 <input className="input" name="source" placeholder="manual, import, unsubscribe, provider" />
               </label>
               <label className="field">
@@ -65,13 +65,13 @@ export default async function SuppressionPage() {
                 />
               </label>
               <button className="danger-button" type="submit">
-                <ShieldAlert size={16} aria-hidden="true" /> Add to suppression
+                <ShieldAlert size={16} aria-hidden="true" /> Add to Do Not Contact
               </button>
             </form>
           </div>
         </section>
 
-        <section className="table-wrap" aria-label="Suppression entries">
+        <section className="table-wrap" aria-label="Do Not Contact entries">
           <table>
             <thead>
               <tr>
@@ -96,7 +96,7 @@ export default async function SuppressionPage() {
               ) : (
                 <tr>
                   <td colSpan={4}>
-                    <div className="empty-state">No suppression entries yet.</div>
+                    <div className="empty-state">No Do Not Contact entries yet.</div>
                   </td>
                 </tr>
               )}

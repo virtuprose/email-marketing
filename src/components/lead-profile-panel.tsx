@@ -33,7 +33,7 @@ export function LeadProfilePanel({ lead }: { lead: LeadWithRelations | null }) {
     return (
       <aside className="panel">
         <div className="panel-body empty-state">
-          Select a lead to inspect source, legal basis, tags, and activity.
+          Select a lead to review where they came from, contact permission, tags, and activity.
         </div>
       </aside>
     );
@@ -54,7 +54,7 @@ export function LeadProfilePanel({ lead }: { lead: LeadWithRelations | null }) {
       <div className="panel-body stack">
         <form action={updateLeadStatus} className="field">
           <input type="hidden" name="id" value={lead.id} />
-          <label htmlFor="status">Lead status</label>
+          <label htmlFor="status">Contact status</label>
           <select id="status" name="status" className="select" defaultValue={lead.status}>
             {Object.values(LeadStatus).map((status) => (
               <option key={status} value={status}>
@@ -63,7 +63,7 @@ export function LeadProfilePanel({ lead }: { lead: LeadWithRelations | null }) {
             ))}
           </select>
           <button className="secondary-button" type="submit">
-            Update status
+            Save status
           </button>
         </form>
 
@@ -73,22 +73,22 @@ export function LeadProfilePanel({ lead }: { lead: LeadWithRelations | null }) {
           <ProfileRow label="Industry" value={lead.industry} />
           <ProfileRow label="Country" value={lead.country} />
           <ProfileRow label="Website" value={lead.website} />
-          <ProfileRow label="Source" value={lead.source} />
-          <ProfileRow label="Legal basis" value={lead.legalBasis} />
-          <ProfileRow label="WhatsApp phone" value={lead.phoneE164} />
+          <ProfileRow label="Where from?" value={lead.source} />
+          <ProfileRow label="Why can we contact them?" value={lead.legalBasis} />
+          <ProfileRow label="WhatsApp number" value={lead.phoneE164} />
           <ProfileRow label="WhatsApp status" value={whatsappLeadStatusLabels[lead.whatsappStatus]} />
-          <ProfileRow label="WhatsApp opt-in" value={lead.whatsappOptIn ? "Yes" : "No"} />
-          <ProfileRow label="WhatsApp consent" value={lead.whatsappConsentSource} />
+          <ProfileRow label="Allowed on WhatsApp" value={lead.whatsappOptIn ? "Yes" : "No"} />
+          <ProfileRow label="WhatsApp permission source" value={lead.whatsappConsentSource} />
           <ProfileRow
-            label="WhatsApp stopped"
+            label="Asked to stop"
             value={lead.whatsappStoppedAt ? formatDate(lead.whatsappStoppedAt) : null}
           />
-          <ProfileRow label="Imported" value={formatDate(lead.createdAt)} />
+          <ProfileRow label="Added" value={formatDate(lead.createdAt)} />
         </div>
 
         {lead.consentNotes ? (
           <div className="alert">
-            <strong>Consent/source notes</strong>
+            <strong>Contact permission notes</strong>
             <br />
             {lead.consentNotes}
           </div>

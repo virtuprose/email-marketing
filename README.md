@@ -2,6 +2,29 @@
 
 Internal single-user product for importing leads, managing suppression/compliance data, preparing Virtuprose offers, generating reviewed AI-assisted email campaign drafts, sending compliant email campaigns, and running Meta WhatsApp Cloud API template campaigns with AI reply qualification.
 
+## Current Deployment
+
+The app is deployed on the VPS at:
+
+```text
+http://31.97.213.79
+```
+
+Deployment details:
+
+- VPS: `root@31.97.213.79`
+- App path: `/opt/virtuprose-sales-assistant`
+- Docker project: `virtuprose-sales-assistant`
+- Public route: Nginx on port `80`
+- Internal app port: `127.0.0.1:3004`
+- Data: Docker volumes for Postgres and Redis
+- Credentials note on owner machine: `/Users/muhammadzaid/.codex/virtuprose-sales-assistant-vps-credentials.txt`
+
+Read:
+
+- `docs/VPS_DEPLOYMENT.md` for deployment, backup, and redeploy commands.
+- `docs/PROJECT_PROGRESS.md` for current progress and pending production items.
+
 ## Local Setup
 
 ```bash
@@ -59,7 +82,7 @@ npm run worker:test
 curl http://localhost:3000/api/health
 ```
 
-## Phase 1 Scope
+## Implemented Scope
 
 - Lead database
 - CSV import with mapping, validation, duplicate checks, suppression checks, and missing compliance data flags
@@ -68,9 +91,9 @@ curl http://localhost:3000/api/health
 - Lead activity timeline
 - Import result review
 
-Campaign sending, AI reply handling, and deliverability monitoring are planned for later phases.
+Campaign sending, WhatsApp Cloud API, AI reply workflow hooks, owner-friendly UI, and deployment are now implemented. Some production operations still need configuration, especially OpenAI, HTTPS webhooks, and SMTP.
 
-## Phase 2 Scope
+## Campaign Scope
 
 - Campaign list and campaign builder
 - Offer-based AI campaign draft generation with local fallback when `OPENAI_API_KEY` is not configured
@@ -80,7 +103,7 @@ Campaign sending, AI reply handling, and deliverability monitoring are planned f
 - Review checklist that blocks approval for empty audiences, suppressed leads, missing lead compliance fields, missing unsubscribe, missing sender identity, or disallowed claims
 - Campaign approval for Phase 3 scheduling only
 
-Phase 2 intentionally does not send email.
+Email sending infrastructure exists, but production email sending still needs SMTP credentials and domain authentication checks before volume.
 
 ## Phase 3 Scope
 
@@ -96,7 +119,7 @@ Phase 2 intentionally does not send email.
 
 Do not disable dry-run for production until SPF, DKIM, DMARC, mailbox warmup, and test-inbox delivery are verified.
 
-## Phase 4/5 Scope
+## AI Inbox And Hot Lead Scope
 
 - AI inbox for manual reply import and webhook reply ingestion
 - Reply classification into hot lead, pricing request, meeting request, proof request, objection, not interested, unsubscribe, complaint, and unclear
@@ -132,7 +155,7 @@ Body: {
 8. Review the AI draft and send it manually from the inbox. In dry-run mode, this records the send without contacting SMTP.
 9. Work hot leads from `/pipeline` and mark outcomes as won, lost, proposal sent, or follow-up later.
 
-For real sending, configure a real reply-to inbox, set `SMTP_PASS`, disable dry-run only after test delivery is confirmed, and keep the worker running.
+For real email sending, configure a real reply-to inbox, set `SMTP_PASS`/`SMTP_PASSWORD`, disable dry-run only after test delivery is confirmed, and keep the worker running.
 
 ## WhatsApp Cloud API Scope
 

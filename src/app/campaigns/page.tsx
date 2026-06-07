@@ -31,39 +31,39 @@ export default async function CampaignsPage() {
     <>
       <PageHeader
         eyebrow="Campaigns"
-        title="Draft, approve, send safely"
-        description="Phase 3 sends approved campaigns through a queue with suppression checks, unsubscribe links, rate limits, and pause controls."
+        title="Campaigns"
+        description="Create WhatsApp or email outreach, review the message, and start safely."
         actions={
-          <Link className="button" href="/campaigns/new">
-            <Plus size={16} aria-hidden="true" /> New campaign
-          </Link>
+          <>
+            <Link className="secondary-button" href="/whatsapp/templates">
+              Message Templates
+            </Link>
+            <Link className="button" href="/campaigns/new">
+              <Plus size={16} aria-hidden="true" /> Create Campaign
+            </Link>
+          </>
         }
       />
 
       <section className="grid grid-4" aria-label="Campaign metrics">
-        <Metric
-          icon={<Send size={18} />}
-          label="Campaigns"
-          value={totalCount}
-          note="All drafts and approvals"
-        />
+        <Metric icon={<Send size={18} />} label="Campaigns" value={totalCount} note="Email campaigns" />
         <Metric
           icon={<AlertTriangle size={18} />}
-          label="Blocked"
+          label="Needs fixes"
           value={blockedCount}
-          note="Needs safety fixes"
+          note="Review before sending"
         />
         <Metric
           icon={<CheckCircle2 size={18} />}
-          label="Sending"
+          label="Sending now"
           value={scheduledCount}
-          note="Queued or running"
+          note="Running or ready"
         />
         <Metric
           icon={<CheckCircle2 size={18} />}
-          label="Completed"
+          label="Finished"
           value={completedCount}
-          note="Finished send jobs"
+          note="Completed campaigns"
         />
       </section>
 
@@ -72,11 +72,11 @@ export default async function CampaignsPage() {
           <thead>
             <tr>
               <th>Campaign</th>
-              <th>Offer</th>
-              <th>Objective</th>
+              <th>Service</th>
+              <th>Goal</th>
               <th>Status</th>
-              <th>Recipients</th>
-              <th>Review</th>
+              <th>People</th>
+              <th>Safety check</th>
               <th>Created</th>
             </tr>
           </thead>
@@ -97,7 +97,7 @@ export default async function CampaignsPage() {
                         {campaign.name}
                       </Link>
                       <br />
-                      <span className="muted">{campaign._count.steps} sequence steps</span>
+                      <span className="muted">{campaign._count.steps} follow-up steps</span>
                     </td>
                     <td>{campaign.offer.name}</td>
                     <td>{objectiveLabels[campaign.objective]}</td>
@@ -106,15 +106,7 @@ export default async function CampaignsPage() {
                     </td>
                     <td>{formatNumber(campaign._count.recipients)}</td>
                     <td>
-                      {campaign.reviews.length ? (
-                        <span
-                          className={blockers ? "danger-text" : warnings ? "warning-text" : "success-text"}
-                        >
-                          {blockers ? `${blockers} blockers` : warnings ? `${warnings} warnings` : "Passed"}
-                        </span>
-                      ) : (
-                        <span className="muted">Not reviewed</span>
-                      )}
+                      <SafetyIssues reviews={campaign.reviews} blockers={blockers} warnings={warnings} />
                     </td>
                     <td>{formatDate(campaign.createdAt)}</td>
                   </tr>
@@ -124,7 +116,7 @@ export default async function CampaignsPage() {
               <tr>
                 <td colSpan={7}>
                   <div className="empty-state">
-                    No campaigns yet. Create the first draft from an approved Virtuprose offer.
+                    No campaigns yet. Create a campaign when your leads and message are ready.
                   </div>
                 </td>
               </tr>
@@ -134,6 +126,105 @@ export default async function CampaignsPage() {
       </section>
     </>
   );
+}
+
+type CampaignReviewSummary = {
+  id: string;
+  campaignId: string;
+  key: string;
+  label: string;
+  message: string;
+  severity: CampaignReviewSeverity;
+};
+
+function SafetyIssues({
+  reviews,
+  blockers,
+  warnings
+}: {
+  reviews: CampaignReviewSummary[];
+  blockers: number;
+  warnings: number;
+}) {
+  const issues = reviews
+    .filter((review) => review.severity !== CampaignReviewSeverity.PASS)
+    .sort((a, b) => severityRank(a.severity) - severityRank(b.severity));
+
+  if (!reviews.length) {
+    return <span className="muted">Not checked yet</span>;
+  }
+
+  if (!issues.length) {
+    return <span className="success-text">Ready</span>;
+  }
+
+  const issueCountLabel = blockers
+    ? `${blockers} ${blockers === 1 ? "fix needed" : "fixes needed"}`
+    : `${warnings} ${warnings === 1 ? "warning" : "warnings"}`;
+
+  return (
+    <details className={`table-issue-details ${blockers ? "table-issue-danger" : "table-issue-warning"}`}>
+      <summary>{issueCountLabel}</summary>
+      <div className="table-issue-panel">
+        <strong>{blockers ? "Fix before sending" : "Review before sending"}</strong>
+        <ul>
+          {issues.map((issue) => {
+            const copy = plainReviewCopy(issue);
+            return (
+              <li key={issue.id}>
+                <span>{copy.label}</span>
+                <small>{copy.message}</small>
+              </li>
+            );
+          })}
+        </ul>
+        <Link href={`/campaigns/${reviews[0]?.campaignId ?? ""}`} className="table-issue-link">
+          Open campaign
+        </Link>
+      </div>
+    </details>
+  );
+}
+
+function severityRank(severity: CampaignReviewSeverity) {
+  if (severity === CampaignReviewSeverity.BLOCK) return 0;
+  if (severity === CampaignReviewSeverity.WARNING) return 1;
+  return 2;
+}
+
+function plainReviewCopy(review: CampaignReviewSummary) {
+  const copyByKey: Record<string, { label: string; message: string }> = {
+    audience: {
+      label: "No ready people selected",
+      message: "Choose at least one lead that has enough contact information."
+    },
+    suppression: {
+      label: "Someone is on the Do Not Contact list",
+      message: "Remove blocked people before starting this campaign."
+    },
+    lead_compliance: {
+      label: "Lead permission details are missing",
+      message: "Add country, lead source, and why you are allowed to contact them."
+    },
+    unsubscribe: {
+      label: "Unsubscribe text is missing",
+      message: "Add an unsubscribe line so people can opt out."
+    },
+    sender_identity: {
+      label: "Business details are missing",
+      message: "Add sender name, sender email, business address, and unsubscribe link in Settings."
+    },
+    claims: {
+      label: "Message has blocked wording",
+      message: "Remove wording that this service is not allowed to promise."
+    },
+    sequence_length: {
+      label: "Too many follow-ups",
+      message: "Shorter campaigns are safer while testing."
+    }
+  };
+
+  return copyByKey[review.key] ?? { label: review.label, message: review.message };
 }
 
 function Metric({

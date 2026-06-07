@@ -1,4 +1,4 @@
-import { ArrowRight, Bot, Database, Flame, Send, ShieldCheck, UsersRound } from "lucide-react";
+import { ArrowRight, Flame, Inbox, Send, ShieldCheck, UsersRound } from "lucide-react";
 import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
@@ -7,100 +7,127 @@ import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
-export default async function CommandCenterPage() {
+export default async function HomePage() {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
   const [
-    leadCount,
-    suppressedCount,
-    needsReviewCount,
-    campaignCount,
-    sentMessageCount,
+    readyLeadCount,
+    skippedCount,
+    runningCampaignCount,
+    sentEmailToday,
+    sentWhatsappToday,
     hotReplyCount,
     ownerReviewCount,
-    openDealCount,
+    hotLeadCount,
+    approvedWhatsappTemplateCount,
     recentImports,
     hotDeals
   ] = await Promise.all([
-    prisma.lead.count(),
+    prisma.lead.count({
+      where: { status: { notIn: ["SUPPRESSED", "UNSUBSCRIBED", "BOUNCED", "DO_NOT_CONTACT"] } }
+    }),
     prisma.suppressionEntry.count(),
-    prisma.lead.count({ where: { status: "NEW" } }),
-    prisma.campaign.count(),
-    prisma.emailMessage.count({ where: { status: "SENT" } }),
+    prisma.campaign.count({ where: { status: { in: ["SCHEDULED", "SENDING"] } } }),
+    prisma.emailMessage.count({ where: { status: "SENT", sentAt: { gte: today } } }),
+    prisma.whatsappMessage.count({
+      where: { status: { in: ["SENT", "DELIVERED", "READ"] }, sentAt: { gte: today } }
+    }),
     prisma.inboundReply.count({ where: { status: "HOT_HANDOFF" } }),
     prisma.inboundReply.count({ where: { ownerActionRequired: true } }),
-    prisma.deal.count({ where: { status: "OPEN" } }),
+    prisma.deal.count({ where: { stage: { in: ["HOT", "OWNER_HANDLING"] }, status: "OPEN" } }),
+    prisma.whatsappTemplate.count({ where: { active: true, status: "APPROVED" } }),
     prisma.importBatch.findMany({ orderBy: { createdAt: "desc" }, take: 5 }),
     prisma.deal.findMany({
-      where: { stage: "HOT", status: "OPEN" },
+      where: { stage: { in: ["HOT", "OWNER_HANDLING"] }, status: "OPEN" },
       include: { lead: true, offer: true },
       orderBy: [{ priorityScore: "desc" }, { updatedAt: "desc" }],
       take: 5
     })
   ]);
+  const messagesToday = sentEmailToday + sentWhatsappToday;
+  const setupWarnings = approvedWhatsappTemplateCount > 0 ? 0 : 1;
 
   return (
     <>
       <PageHeader
-        eyebrow="Command Center"
-        title="Virtuprose AI sales command center"
-        description="Import leads, launch safe outreach, let AI triage replies, and focus owner time on hot opportunities."
+        eyebrow="Home"
+        title="Today’s work"
+        description="Add leads, start safe campaigns, review replies, and focus on people who are ready to talk."
         actions={
           <>
-            <Link className="secondary-button" href="/inbox">
-              AI inbox <Bot size={16} aria-hidden="true" />
+            <Link className="secondary-button" href="/leads/import">
+              Add Leads <UsersRound size={16} aria-hidden="true" />
             </Link>
             <Link className="button" href="/campaigns/new">
-              Create campaign <ArrowRight size={16} aria-hidden="true" />
+              Create Campaign <ArrowRight size={16} aria-hidden="true" />
             </Link>
           </>
         }
       />
 
-      <section className="grid grid-4" aria-label="Command center metrics">
-        <Metric icon={<UsersRound size={18} />} label="Leads" value={leadCount} note="Imported contacts" />
+      <section className="panel attention-panel" aria-label="What needs your attention today">
+        <div className="panel-header">
+          <div>
+            <h2>What needs your attention today</h2>
+            <p className="muted">Start with the items that can turn into client conversations.</p>
+          </div>
+        </div>
+        <div className="panel-body priority-list">
+          <PriorityItem
+            href="/pipeline"
+            icon={<Flame size={18} />}
+            title="Hot leads waiting"
+            value={hotLeadCount}
+            note="People AI thinks you should handle personally."
+          />
+          <PriorityItem
+            href="/inbox"
+            icon={<Inbox size={18} />}
+            title="Replies to review"
+            value={ownerReviewCount}
+            note="Replies where AI wants your decision."
+          />
+          <PriorityItem
+            href="/campaigns"
+            icon={<Send size={18} />}
+            title="Campaigns currently sending"
+            value={runningCampaignCount}
+            note="Active outreach running in the background."
+          />
+          <PriorityItem
+            href="/settings"
+            icon={<ShieldCheck size={18} />}
+            title="Setup warnings"
+            value={setupWarnings}
+            note={setupWarnings ? "Add at least one approved WhatsApp message." : "Core setup looks ready."}
+          />
+        </div>
+      </section>
+
+      <section className="grid grid-4" aria-label="Owner metrics" style={{ marginTop: 16 }}>
         <Metric
-          icon={<ShieldCheck size={18} />}
-          label="Suppressed"
-          value={suppressedCount}
-          note="Blocked before send"
+          icon={<Flame size={18} />}
+          label="Hot leads"
+          value={hotLeadCount + hotReplyCount}
+          note="Ready for your attention"
         />
         <Metric
-          icon={<Database size={18} />}
-          label="Needs review"
-          value={needsReviewCount}
-          note="Missing source/legal data"
+          icon={<Inbox size={18} />}
+          label="Replies to review"
+          value={ownerReviewCount}
+          note="Needs your decision"
+        />
+        <Metric
+          icon={<UsersRound size={18} />}
+          label="Ready leads"
+          value={readyLeadCount}
+          note="Can be used in campaigns"
         />
         <Metric
           icon={<Send size={18} />}
-          label="Campaigns"
-          value={campaignCount}
-          note={`${formatNumber(sentMessageCount)} messages sent`}
-        />
-      </section>
-
-      <section className="grid grid-4" aria-label="AI sales metrics" style={{ marginTop: 16 }}>
-        <Metric
-          icon={<Flame size={18} />}
-          label="Hot replies"
-          value={hotReplyCount}
-          note="Owner-ready handoffs"
-        />
-        <Metric
-          icon={<Bot size={18} />}
-          label="Owner review"
-          value={ownerReviewCount}
-          note="AI needs decision"
-        />
-        <Metric
-          icon={<Database size={18} />}
-          label="Open deals"
-          value={openDealCount}
-          note="Pipeline items"
-        />
-        <Metric
-          icon={<ShieldCheck size={18} />}
-          label="Suppressed"
-          value={suppressedCount}
-          note="Protected sends"
+          label="Messages sent today"
+          value={messagesToday}
+          note={`${formatNumber(skippedCount)} people protected by safety list`}
         />
       </section>
 
@@ -108,8 +135,8 @@ export default async function CommandCenterPage() {
         <div className="panel">
           <div className="panel-header">
             <div>
-              <h2>Hot handoffs</h2>
-              <p className="muted">These are the conversations where owner attention matters most.</p>
+              <h2>Hot leads</h2>
+              <p className="muted">These are the people most worth your personal follow-up.</p>
             </div>
           </div>
           <div className="panel-body stack">
@@ -117,13 +144,11 @@ export default async function CommandCenterPage() {
               hotDeals.map((deal) => (
                 <Link className="profile-row" key={deal.id} href="/pipeline">
                   <span>{deal.lead.company || deal.lead.email}</span>
-                  <span>{deal.offer?.name || `${deal.priorityScore}/100`}</span>
+                  <span>{deal.offer?.name || `Strength ${deal.priorityScore}/100`}</span>
                 </Link>
               ))
             ) : (
-              <div className="empty-state">
-                No hot handoffs yet. Replies will appear here after AI triage.
-              </div>
+              <div className="empty-state">No hot leads yet. Add leads and start your first campaign.</div>
             )}
           </div>
         </div>
@@ -131,17 +156,17 @@ export default async function CommandCenterPage() {
         <div className="panel">
           <div className="panel-header">
             <div>
-              <h2>Operating loop</h2>
-              <p className="muted">Use the app in this order for the safest internal workflow.</p>
+              <h2>Simple workflow</h2>
+              <p className="muted">Use the assistant in this order.</p>
             </div>
           </div>
           <div className="panel-body stack">
-            <Step label="Import leads with source/legal basis" status="VALIDATED" />
-            <Step label="Choose Virtuprose offer" status="VALIDATED" />
-            <Step label="Generate and approve campaign" status="VALIDATED" />
-            <Step label="Send through throttled queue" status="VALIDATED" />
-            <Step label="AI classify and draft replies" status="VALIDATED" />
-            <Step label="Owner closes hot deals" status="VALIDATED" />
+            <Step label="Add leads" status="VALIDATED" />
+            <Step label="Choose service" status="VALIDATED" />
+            <Step label="Create campaign" status="VALIDATED" />
+            <Step label="Send safely" status="VALIDATED" />
+            <Step label="Review replies" status="VALIDATED" />
+            <Step label="Close hot leads" status="VALIDATED" />
           </div>
         </div>
       </section>
@@ -150,8 +175,8 @@ export default async function CommandCenterPage() {
         <div className="panel">
           <div className="panel-header">
             <div>
-              <h2>Recent imports</h2>
-              <p className="muted">Review every import before using it in a campaign.</p>
+              <h2>Latest leads added</h2>
+              <p className="muted">Recent CSV uploads you can review.</p>
             </div>
           </div>
           <div className="panel-body stack">
@@ -171,16 +196,16 @@ export default async function CommandCenterPage() {
         <div className="panel">
           <div className="panel-header">
             <div>
-              <h2>Production guardrails</h2>
-              <p className="muted">Keep dry-run on until credentials, DNS, and inbox receipt are verified.</p>
+              <h2>Safety rules</h2>
+              <p className="muted">These stay on so sending stays controlled.</p>
             </div>
           </div>
           <div className="panel-body stack">
-            <Step label="Dry-run default" status="VALIDATED" />
-            <Step label="Global kill switch" status="VALIDATED" />
-            <Step label="Suppression before every send" status="VALIDATED" />
-            <Step label="Replies stop queued follow-ups" status="VALIDATED" />
-            <Step label="Inbound webhook secret required" status="VALIDATED" />
+            <Step label="Test mode is clear before sending" status="VALIDATED" />
+            <Step label="Pause all sending is always available" status="VALIDATED" />
+            <Step label="People who opted out are skipped" status="VALIDATED" />
+            <Step label="Missing contact details are skipped" status="VALIDATED" />
+            <Step label="AI asks for help on risky replies" status="VALIDATED" />
           </div>
         </div>
       </section>
@@ -207,6 +232,31 @@ function Metric({
       <p className="metric-value">{formatNumber(value)}</p>
       <p className="metric-note">{note}</p>
     </div>
+  );
+}
+
+function PriorityItem({
+  href,
+  icon,
+  title,
+  value,
+  note
+}: {
+  href: string;
+  icon: React.ReactNode;
+  title: string;
+  value: number;
+  note: string;
+}) {
+  return (
+    <Link className="priority-item" href={href}>
+      <span className="priority-icon">{icon}</span>
+      <span>
+        <strong>{title}</strong>
+        <small>{note}</small>
+      </span>
+      <strong className="priority-value">{formatNumber(value)}</strong>
+    </Link>
   );
 }
 
