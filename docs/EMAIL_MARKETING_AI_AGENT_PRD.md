@@ -7,7 +7,7 @@ Primary goal: Convert imported cold or warm leads into qualified hot leads for V
 
 ## Current Build And Deployment Status
 
-As of 2026-06-07, the internal product has been implemented and deployed for owner testing on the VPS at `http://31.97.213.79`.
+As of 2026-06-07, the internal product has been implemented and deployed for owner testing on the VPS at `https://sales.virtuprose.com`.
 
 Deployment and progress details are tracked in:
 
@@ -17,8 +17,8 @@ Deployment and progress details are tracked in:
 
 Key production gaps remaining:
 
-- Add `OPENAI_API_KEY` for full AI reply classification and drafting.
-- Add a real domain and HTTPS for Meta WhatsApp inbound webhooks.
+- Test full AI reply classification and drafting with the configured OpenAI key.
+- Configure Meta WhatsApp inbound webhooks in the Meta App Dashboard.
 - Add SMTP credentials and domain authentication before production email sending.
 - Add scheduled database backups.
 

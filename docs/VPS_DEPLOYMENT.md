@@ -6,14 +6,14 @@ This document records the current VPS deployment for the internal Virtuprose Sal
 
 ## Current Deployment
 
-- Public test URL: `http://31.97.213.79`
+- Public URL: `https://sales.virtuprose.com`
 - VPS SSH host: `root@31.97.213.79`
 - Server OS: Ubuntu 22.04
 - App directory: `/opt/virtuprose-sales-assistant`
 - Docker Compose project: `virtuprose-sales-assistant`
 - Nginx route: server IP on port `80`
 - Internal app port: `127.0.0.1:3004`
-- App base URL: `http://31.97.213.79`
+- App base URL: `https://sales.virtuprose.com`
 - Credential note on owner machine: `/Users/muhammadzaid/.codex/virtuprose-sales-assistant-vps-credentials.txt`
 
 Do not commit the credential note or any `.env` file.
@@ -65,7 +65,7 @@ Health check:
 
 ```bash
 curl http://127.0.0.1:3004/api/health
-curl http://31.97.213.79/api/health
+curl https://sales.virtuprose.com/api/health
 ```
 
 Expected result:
@@ -80,7 +80,7 @@ Configured on the VPS:
 
 - `DATABASE_URL`
 - `REDIS_URL`
-- `APP_BASE_URL=http://31.97.213.79`
+- `APP_BASE_URL=https://sales.virtuprose.com`
 - `BASIC_AUTH_USER`
 - `BASIC_AUTH_PASSWORD`
 - `INBOUND_WEBHOOK_SECRET`
@@ -95,11 +95,9 @@ Configured on the VPS:
 
 Missing or pending:
 
-- `OPENAI_API_KEY`
 - `SMTP_PASS`
 - `SMTP_PASSWORD`
-- Real domain and HTTPS certificate
-- Meta webhook callback using public HTTPS
+- Meta webhook callback configured in Meta App Dashboard
 
 ## Current Access
 
@@ -113,22 +111,20 @@ Do not store the username or password in this document. The local private creden
 
 ## Nginx
 
-Temporary IP-based route:
+Active domain route:
 
 ```text
-/etc/nginx/sites-available/virtuprose-sales-assistant-ip
-/etc/nginx/sites-enabled/virtuprose-sales-assistant-ip
+/etc/nginx/sites-available/sales.virtuprose.com
+/etc/nginx/sites-enabled/sales.virtuprose.com
 ```
 
-The current route is acceptable for internal testing, but production WhatsApp webhooks need HTTPS.
-
-Recommended next route:
+Active HTTPS route:
 
 ```text
 https://sales.virtuprose.com
 ```
 
-After DNS points to `31.97.213.79`, create a normal Nginx server block and issue a Let's Encrypt certificate.
+DNS points to `31.97.213.79`, and Let's Encrypt SSL is active.
 
 ## Backup Commands
 
@@ -172,6 +168,6 @@ ssh root@31.97.213.79 'cd /opt/virtuprose-sales-assistant && docker compose --en
 
 - `META_WHATSAPP_DRY_RUN=false` means WhatsApp sends are live.
 - Do not start bulk sending until a single test lead/template flow is verified.
-- Inbound WhatsApp replies and AI auto-replies require a public HTTPS webhook URL.
-- AI classification and AI reply drafting require `OPENAI_API_KEY`.
+- Inbound WhatsApp replies and AI auto-replies require Meta App Dashboard webhook setup.
+- AI classification and AI reply drafting are configured with `gpt-4.1-mini`; test one live reply before relying on automation.
 - Email sending requires SMTP credentials and domain deliverability setup.

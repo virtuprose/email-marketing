@@ -6,7 +6,7 @@ Primary outcome: Import leads, send safe AI-assisted outreach, let AI manage ear
 
 ## Current Implementation Status
 
-As of 2026-06-07, the core internal product has been implemented and deployed on the VPS at `http://31.97.213.79`.
+As of 2026-06-07, the core internal product has been implemented and deployed on the VPS at `https://sales.virtuprose.com`.
 
 Completed implementation areas:
 
@@ -19,8 +19,8 @@ Completed implementation areas:
 
 Remaining production readiness items:
 
-- Add `OPENAI_API_KEY` for full AI reply quality.
-- Add a real domain and HTTPS for Meta webhooks.
+- Test AI reply quality with the configured OpenAI key.
+- Configure Meta webhooks to the HTTPS callback URL.
 - Add SMTP credentials and email domain authentication before production email sending.
 - Add scheduled database backups.
 

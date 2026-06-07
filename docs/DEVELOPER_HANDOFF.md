@@ -18,15 +18,15 @@ This project is an internal, single-owner Virtuprose platform for lead import, c
 - Phone number status was registered through Cloud API and confirmed `CONNECTED`.
 - A Meta marketing template named `virtuprose_test_intro_1780700375249` was submitted, approved, synced locally, and used for one successful live test send.
 - The successful test message went to `+96569984942` with Meta message ID `wamid.HBgLOTY1Njk5ODQ5NDIVAgARGBJBQUI0NUYyMjNGQTRBRUZGRjgA`.
-- The app is deployed on the VPS at `http://31.97.213.79`.
+- The app is deployed on the VPS at `https://sales.virtuprose.com`.
 - VPS app path is `/opt/virtuprose-sales-assistant`.
 - Docker Compose project is `virtuprose-sales-assistant`.
 - App, worker, Postgres, and Redis containers are running on the VPS.
 - Production credentials are stored in `/opt/virtuprose-sales-assistant/.env.production` on the VPS and must never be committed.
 - Owner login details are saved locally in `/Users/muhammadzaid/.codex/virtuprose-sales-assistant-vps-credentials.txt`.
-- `OPENAI_API_KEY` is currently missing on the VPS, so full AI reply quality is pending.
+- `OPENAI_API_KEY` is configured on the VPS.
 - SMTP passwords are currently missing on the VPS, so production email sending is pending.
-- HTTPS/domain setup is pending, so Meta inbound webhooks are not production-ready yet.
+- HTTPS is configured at `https://sales.virtuprose.com`; Meta App Dashboard webhook configuration is still pending.
 
 ## Architecture
 
@@ -132,7 +132,7 @@ root@31.97.213.79
 Current public app URL:
 
 ```text
-http://31.97.213.79
+https://sales.virtuprose.com
 ```
 
 Current app path:
@@ -297,9 +297,9 @@ Provider mapping:
 
 - A permanent System User token should replace the dashboard-generated user token before unattended production use.
 - Webhooks need a public HTTPS URL before inbound replies and AI WhatsApp auto-replies can work end to end.
-- `OPENAI_API_KEY` must be added on the VPS before full AI reply classification and drafting are production-ready.
+- OpenAI is configured; one live inbound reply should be tested before trusting auto-replies.
 - SMTP credentials must be added before production email sending.
-- A real domain and Let's Encrypt SSL certificate are required before Meta webhooks can be connected reliably.
+- Meta App Dashboard must be pointed to `https://sales.virtuprose.com/api/webhooks/meta/whatsapp`.
 - Payment method and message limits should be confirmed in WhatsApp Manager before volume.
 - Old Twilio-specific secrets should stay removed from `.env.example` and should never be committed.
 - The current dashboard is single-user and protected by Basic Auth, not multi-user role-based auth.

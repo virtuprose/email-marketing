@@ -51,5 +51,5 @@ curl http://localhost/api/health
 
 - Keep `META_WHATSAPP_DRY_RUN="true"` until the live WhatsApp test is approved.
 - Set `APP_BASE_URL` to the public URL before using Meta webhooks.
-- Meta webhooks require HTTPS, so add a real domain before production WhatsApp receiving.
+- Active VPS deployment uses `https://sales.virtuprose.com`; this Oracle note is fallback only.
 - Do not commit `.env.production`.

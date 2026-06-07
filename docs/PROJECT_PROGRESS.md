@@ -29,7 +29,7 @@ Virtuprose Sales Assistant is an internal single-owner platform for:
 - Help/FAQ page with usage and safety rules.
 - Docker production setup for app, worker, Postgres, and Redis.
 - VPS deployment on `31.97.213.79`.
-- Public app route on `http://31.97.213.79`.
+- Public app route on `https://sales.virtuprose.com` with HTTPS.
 - Health endpoint verified from outside the VPS.
 
 ## VPS Deployment Status
@@ -40,7 +40,7 @@ Virtuprose Sales Assistant is an internal single-owner platform for:
 - Worker service: running
 - Postgres service: healthy
 - Redis service: healthy
-- Public URL: `http://31.97.213.79`
+- Public URL: `https://sales.virtuprose.com`
 - Basic Auth: enabled
 - Credential note: `/Users/muhammadzaid/.codex/virtuprose-sales-assistant-vps-credentials.txt`
 
@@ -62,15 +62,12 @@ Set on VPS:
 
 Missing on VPS:
 
-- `OPENAI_API_KEY`
 - SMTP password values
-- Real domain
-- HTTPS certificate
-- Meta webhook callback configured to an HTTPS URL
+- Meta webhook callback configured in Meta App Dashboard
 
 ## What Works Now
 
-- Owner can open the dashboard at `http://31.97.213.79`.
+- Owner can open the dashboard at `https://sales.virtuprose.com`.
 - App requires Basic Auth.
 - Database and Redis are connected.
 - Background worker is running.
@@ -84,20 +81,15 @@ Missing on VPS:
 
 Pending:
 
-- Add `OPENAI_API_KEY` to `/opt/virtuprose-sales-assistant/.env.production`.
-- Recreate the app and worker containers after adding the key.
 - Test one inbound reply and confirm AI classification.
 - Decide whether AI replies must be manually approved or can auto-send for safe replies.
 
-Without `OPENAI_API_KEY`, the app can still use fallback logic in some places, but full AI reply quality is not active.
+OpenAI is configured on the VPS using `gpt-4.1-mini` for campaign and reply drafting. The next step is live reply testing.
 
 ### WhatsApp Inbound Replies
 
 Pending:
 
-- Add a real domain, for example `sales.virtuprose.com`.
-- Enable HTTPS with Let's Encrypt.
-- Set `APP_BASE_URL` to the HTTPS URL.
 - Configure Meta webhook callback:
 
 ```text
@@ -120,7 +112,7 @@ Pending:
 
 Pending:
 
-- Add a domain and HTTPS.
+- Domain and HTTPS are active at `https://sales.virtuprose.com`.
 - Confirm Meta billing/payment and message limits.
 - Confirm WhatsApp number quality rating.
 - Keep daily caps low until reply quality and opt-out rate are known.
@@ -128,13 +120,10 @@ Pending:
 
 ## Recommended Next Steps
 
-1. Add a domain/subdomain to the VPS.
-2. Enable HTTPS.
-3. Add `OPENAI_API_KEY` on the VPS.
-4. Configure Meta webhook callback URL.
-5. Test one inbound WhatsApp reply.
-6. Test one AI reply draft.
-7. Test one approved WhatsApp template send to your own number.
-8. Add SMTP only after WhatsApp is stable, unless email testing is urgent.
-9. Add a daily Postgres backup.
-10. Keep message caps low while testing.
+1. Configure Meta webhook callback URL in Meta App Dashboard.
+2. Test one inbound WhatsApp reply.
+3. Test one AI reply draft.
+4. Test one approved WhatsApp template send to your own number.
+5. Add SMTP only after WhatsApp is stable, unless email testing is urgent.
+6. Add a daily Postgres backup.
+7. Keep message caps low while testing.

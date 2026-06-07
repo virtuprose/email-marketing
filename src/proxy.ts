@@ -17,6 +17,7 @@ export function proxy(request: NextRequest) {
     pathname.startsWith("/unsubscribe") ||
     pathname.startsWith("/api/track") ||
     pathname.startsWith("/api/inbound") ||
+    pathname.startsWith("/api/webhooks/meta") ||
     PUBLIC_FILE.test(pathname)
   ) {
     return NextResponse.next();

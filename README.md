@@ -7,7 +7,7 @@ Internal single-user product for importing leads, managing suppression/complianc
 The app is deployed on the VPS at:
 
 ```text
-http://31.97.213.79
+https://sales.virtuprose.com
 ```
 
 Deployment details:
