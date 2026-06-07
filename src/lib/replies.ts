@@ -117,6 +117,8 @@ const draftSchema = z.object({
   riskFlags: z.array(z.string()).default([])
 });
 
+const OPENAI_RETRY_DELAYS_MS = [800, 1800];
+
 const terminalNegativeIntents = new Set<ReplyIntent>([
   ReplyIntent.UNSUBSCRIBE,
   ReplyIntent.COMPLAINT,
@@ -1286,7 +1288,7 @@ async function analyzeReplyWithAiFallback(
   if (!apiKey) return fallback;
 
   try {
-    const response = await fetch("https://api.openai.com/v1/responses", {
+    const response = await fetchOpenAiResponsesWithRetry({
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -1375,6 +1377,33 @@ async function analyzeReplyWithAiFallback(
   }
 }
 
+async function fetchOpenAiResponsesWithRetry(init: RequestInit) {
+  let lastResponse: Response | null = null;
+
+  for (let attempt = 0; attempt <= OPENAI_RETRY_DELAYS_MS.length; attempt += 1) {
+    const response = await fetch("https://api.openai.com/v1/responses", init);
+    if (response.ok || !isRetryableOpenAiStatus(response.status)) {
+      return response;
+    }
+
+    lastResponse = response;
+    const delayMs = OPENAI_RETRY_DELAYS_MS[attempt];
+    if (delayMs) {
+      await sleep(delayMs);
+    }
+  }
+
+  return lastResponse ?? fetch("https://api.openai.com/v1/responses", init);
+}
+
+function isRetryableOpenAiStatus(status: number) {
+  return status === 408 || status === 409 || status === 429 || status >= 500;
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function generateReplyDraftWithAiFallback({
   reply,
   lead,
@@ -1399,7 +1428,7 @@ async function generateReplyDraftWithAiFallback({
   }
 
   try {
-    const response = await fetch("https://api.openai.com/v1/responses", {
+    const response = await fetchOpenAiResponsesWithRetry({
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
