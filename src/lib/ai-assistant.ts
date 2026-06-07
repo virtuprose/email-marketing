@@ -94,7 +94,7 @@ export const defaultAiAssistantSettings: AiAssistantSettings = {
     email: { enabled: true, autoReply: true }
   },
   confidence: {
-    autoSendMinimum: 85,
+    autoSendMinimum: 80,
     draftMinimum: 60
   },
   timing: {

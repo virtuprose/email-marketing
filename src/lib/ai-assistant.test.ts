@@ -45,6 +45,27 @@ describe("AI Assistant auto-reply decisions", () => {
     expect(decision.reasons).toEqual([]);
   });
 
+  it("allows safe WhatsApp replies at the default confidence floor", async () => {
+    const decision = await decideAiReplyAutomation({
+      reply: { ...baseReply, aiConfidence: 80 },
+      lead: baseLead,
+      draft: baseDraft,
+      settings: {
+        ...defaultAiAssistantSettings,
+        timing: { ...defaultAiAssistantSettings.timing, minReplyDelaySeconds: 0, maxReplyDelaySeconds: 0 }
+      },
+      whatsappWindowOpen: true,
+      openAiConfigured: true,
+      existingOwnerReviewCount: 0,
+      sentToday: 0,
+      duplicateSentDraftCount: 0
+    });
+
+    expect(defaultAiAssistantSettings.confidence.autoSendMinimum).toBe(80);
+    expect(decision.shouldAutoSend).toBe(true);
+    expect(decision.reasons).toEqual([]);
+  });
+
   it("blocks hot pricing replies for owner handoff", async () => {
     const decision = await decideAiReplyAutomation({
       reply: { ...baseReply, intent: ReplyIntent.PRICING_REQUEST, ownerActionRequired: true },
