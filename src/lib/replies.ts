@@ -216,10 +216,11 @@ export function analyzeReplyLocally({
       sentiment: ReplySentiment.POSITIVE,
       confidence: 91,
       summary: "The lead is open to a meeting or direct conversation.",
-      suggestedAction: "Owner should take over and arrange the next conversation.",
-      ownerActionRequired: true,
-      autoReplyEligible: false,
-      riskFlags: ["Owner handoff required before promising availability."],
+      suggestedAction:
+        "Acknowledge the request, ask for the best time or contact preference, and alert the owner.",
+      ownerActionRequired: false,
+      autoReplyEligible: true,
+      riskFlags: [],
       leadStatus: LeadStatus.HOT,
       scoreIntent: 95,
       scoreEngagement: 90,
@@ -233,10 +234,11 @@ export function analyzeReplyLocally({
       sentiment: ReplySentiment.POSITIVE,
       confidence: 88,
       summary: "The lead asked about pricing, proposal, quote, or budget.",
-      suggestedAction: "Owner should qualify scope before giving a price.",
-      ownerActionRequired: true,
-      autoReplyEligible: false,
-      riskFlags: ["Do not invent prices or fixed timelines."],
+      suggestedAction:
+        "Use approved pricing guidance if relevant, ask for scope and market, and alert the owner.",
+      ownerActionRequired: false,
+      autoReplyEligible: true,
+      riskFlags: [],
       leadStatus: LeadStatus.HOT,
       scoreIntent: 90,
       scoreEngagement: 86,
@@ -264,10 +266,10 @@ export function analyzeReplyLocally({
       sentiment: ReplySentiment.POSITIVE,
       confidence: 90,
       summary: "The lead described a project or custom scope that needs owner qualification.",
-      suggestedAction: "Owner should take over, ask for scope, and decide the next step.",
-      ownerActionRequired: true,
-      autoReplyEligible: false,
-      riskFlags: ["Owner handoff required for custom scope."],
+      suggestedAction: "Ask one scope question and alert the owner without stopping the conversation.",
+      ownerActionRequired: false,
+      autoReplyEligible: true,
+      riskFlags: [],
       leadStatus: LeadStatus.HOT,
       scoreIntent: 94,
       scoreEngagement: 88,
@@ -351,8 +353,8 @@ export function analyzeReplyLocally({
       summary: "The lead replied with a question, objection, or request for more context.",
       suggestedAction: "AI can draft a concise answer using only approved Virtuprose offer facts.",
       ownerActionRequired: false,
-      autoReplyEligible: false,
-      riskFlags: ["Review needed if the objection asks for claims, guarantees, or pricing."],
+      autoReplyEligible: true,
+      riskFlags: [],
       leadStatus: LeadStatus.INTERESTED,
       scoreIntent: 58,
       scoreEngagement: 70,
@@ -368,7 +370,7 @@ export function analyzeReplyLocally({
       summary: "The lead appears interested and asked to continue the conversation.",
       suggestedAction: "Send a short clarifying reply and ask one qualification question.",
       ownerActionRequired: false,
-      autoReplyEligible: false,
+      autoReplyEligible: true,
       riskFlags: [],
       leadStatus: LeadStatus.INTERESTED,
       scoreIntent: 72,
@@ -738,14 +740,8 @@ export async function processInboundReply(replyId: string, knownOffer?: Offer | 
         scoreEngagement: Math.max(lead.scoreEngagement, analysis.scoreEngagement),
         scoreIntent: Math.max(lead.scoreIntent, analysis.scoreIntent),
         nextActionAt,
-        aiAutoReplyPaused: hotIntents.has(analysis.intent) ? true : lead.aiAutoReplyPaused,
-        aiAutoReplyPausedAt: hotIntents.has(analysis.intent) ? new Date() : lead.aiAutoReplyPausedAt,
-        aiAutoReplyPauseReason: hotIntents.has(analysis.intent)
-          ? "AI handed this hot lead to the owner."
-          : lead.aiAutoReplyPauseReason,
-        whatsappBotPaused: hotIntents.has(analysis.intent) ? true : lead.whatsappBotPaused,
         whatsappHandoffReason: hotIntents.has(analysis.intent)
-          ? "AI handed this hot lead to the owner."
+          ? "AI notified the owner and continued the sales conversation."
           : lead.whatsappHandoffReason
       }
     });
@@ -1362,7 +1358,10 @@ async function analyzeReplyWithAiFallback(
               settings?.prompts.classifier ||
                 "Classify inbound B2B sales replies for Virtuprose. Output only JSON.",
               settings?.prompts.safety || "",
-              "Output only JSON. Never recommend replying after unsubscribe or complaint. Do not invent facts, prices, guarantees, availability, portfolio claims, or unsupported proof."
+              "Output only JSON.",
+              "HOT_LEAD, PRICING_REQUEST, and MEETING_REQUEST should usually be autoReplyEligible true and ownerActionRequired false when the message can be answered safely. They should still notify the owner through intent.",
+              "Only set ownerActionRequired true when the user asks to stop, complains, sends unsafe content, asks for unsupported promises, or the intent is too unclear.",
+              "Never recommend replying after unsubscribe or complaint. Do not invent facts, prices, guarantees, availability, portfolio claims, or unsupported proof."
             ]
               .filter(Boolean)
               .join("\n\n")
@@ -1519,12 +1518,13 @@ async function generateReplyDraftWithAiFallback({
               settings?.prompts.businessRules || "",
               settings?.prompts.safety || "",
               settings
-                ? "Use only the approved knowledge base and current offer context. If the lead asks for pricing, meeting, proposal, exact scope, or anything not approved, create a safe handoff-style draft and do not invent details."
+                ? "Use only the approved knowledge base and current offer context. If the lead asks for pricing, use approved pricing ranges when they match the service and market; otherwise ask for scope and market. If the lead asks for a meeting, acknowledge and ask for the best time or contact preference without promising availability. If the lead wants help with a project, ask one practical scope question and keep the conversation moving."
                 : "",
               "Output only JSON.",
-              "For WhatsApp, keep the reply short and conversational with no subject-line wording.",
-              "For email, stay concise and professional.",
-              "Do not mention AI. Do not mention prices, guarantees, fake availability, fake case studies, unsupported claims, or exact timelines. Keep one clear next question."
+              "For WhatsApp, keep the reply short, human, and conversational with no subject-line wording. Use 2 to 4 short sentences.",
+              "For email, stay concise and professional. Use 2 to 4 short paragraphs at most.",
+              "Always ask exactly one clear question at the end.",
+              "Do not mention AI. Do not mention fake availability, fake case studies, unsupported claims, exact timelines, guarantees, or exact prices outside approved pricing guidance."
             ]
               .filter(Boolean)
               .join("\n\n")
@@ -1686,6 +1686,8 @@ async function decidePreviewAutomation({
     lead: {
       id: "preview-lead",
       aiAutoReplyPaused: false,
+      aiAutoReplyPauseReason: null,
+      whatsappHandoffReason: null,
       whatsappBotPaused: false
     },
     draft: {

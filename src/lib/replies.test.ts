@@ -16,7 +16,7 @@ const offer = {
 };
 
 describe("AI reply triage helpers", () => {
-  it("marks meeting requests as hot owner handoffs", () => {
+  it("keeps meeting requests replyable while marking the lead hot", () => {
     const analysis = analyzeReplyLocally({
       subject: "Re: quick idea",
       bodyText: "Sounds useful. Can we schedule a call this week?"
@@ -25,7 +25,8 @@ describe("AI reply triage helpers", () => {
     expect(analysis.intent).toBe(ReplyIntent.MEETING_REQUEST);
     expect(analysis.leadStatus).toBe(LeadStatus.HOT);
     expect(analysis.dealStage).toBe(DealStage.HOT);
-    expect(analysis.ownerActionRequired).toBe(true);
+    expect(analysis.ownerActionRequired).toBe(false);
+    expect(analysis.autoReplyEligible).toBe(true);
   });
 
   it("blocks unsubscribe replies from AI follow-up", () => {
@@ -82,6 +83,7 @@ describe("AI reply triage helpers", () => {
 
     expect(analysis.intent).toBe(ReplyIntent.HOT_LEAD);
     expect(analysis.leadStatus).toBe(LeadStatus.HOT);
-    expect(analysis.ownerActionRequired).toBe(true);
+    expect(analysis.ownerActionRequired).toBe(false);
+    expect(analysis.autoReplyEligible).toBe(true);
   });
 });

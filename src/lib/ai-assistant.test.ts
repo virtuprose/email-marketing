@@ -15,7 +15,9 @@ const baseReply = {
 const baseLead = {
   id: "lead-1",
   aiAutoReplyPaused: false,
-  whatsappBotPaused: false
+  aiAutoReplyPauseReason: null,
+  whatsappBotPaused: false,
+  whatsappHandoffReason: null
 };
 
 const baseDraft = {
@@ -83,9 +85,9 @@ describe("AI Assistant auto-reply decisions", () => {
     expect(decision.reasons).toContain("AI confidence is below auto-send level.");
   });
 
-  it("blocks hot pricing replies for owner handoff", async () => {
+  it("continues safe pricing replies while notifying the owner", async () => {
     const decision = await decideAiReplyAutomation({
-      reply: { ...baseReply, intent: ReplyIntent.PRICING_REQUEST, ownerActionRequired: true },
+      reply: { ...baseReply, intent: ReplyIntent.PRICING_REQUEST, ownerActionRequired: false },
       lead: baseLead,
       draft: baseDraft,
       settings: defaultAiAssistantSettings,
@@ -96,7 +98,7 @@ describe("AI Assistant auto-reply decisions", () => {
       duplicateSentDraftCount: 0
     });
 
-    expect(decision.shouldAutoSend).toBe(false);
+    expect(decision.shouldAutoSend).toBe(true);
     expect(decision.shouldNotifyOwner).toBe(true);
   });
 
@@ -115,6 +117,29 @@ describe("AI Assistant auto-reply decisions", () => {
 
     expect(decision.shouldAutoSend).toBe(false);
     expect(decision.reasons).toContain("AI is off for this lead.");
+  });
+
+  it("does not block for the old automatic hot-lead handoff pause reason", async () => {
+    const decision = await decideAiReplyAutomation({
+      reply: baseReply,
+      lead: {
+        ...baseLead,
+        aiAutoReplyPaused: true,
+        aiAutoReplyPauseReason: "AI handed this hot lead to the owner.",
+        whatsappBotPaused: true,
+        whatsappHandoffReason: "AI handed this hot lead to the owner."
+      },
+      draft: baseDraft,
+      settings: defaultAiAssistantSettings,
+      whatsappWindowOpen: true,
+      openAiConfigured: true,
+      existingOwnerReviewCount: 1,
+      sentToday: 0,
+      duplicateSentDraftCount: 0
+    });
+
+    expect(decision.shouldAutoSend).toBe(true);
+    expect(decision.reasons).toEqual([]);
   });
 
   it("respects Draft Only and daily cap", async () => {

@@ -74,15 +74,15 @@ export type AiReplyDecision = {
 
 const defaultPrompts = {
   businessRules:
-    "You are the Virtuprose sales assistant. Your job is to answer simple safe questions, qualify the lead, and bring hot leads to the owner. Be concise, honest, friendly, and low pressure. Use only approved knowledge.",
+    "You are a human-like sales assistant for Virtuprose. Your job is to help leads choose the right service, understand safe pricing guidance, and take the next step. Sound like a real professional person: 2 to 4 short sentences, one clear question at the end, no hype, no jargon, no mention of AI. Move every conversation forward: clarify goal, recommend service, qualify scope, capture details, then notify the owner when the lead is serious.",
   classifier:
-    "Classify inbound B2B replies for Virtuprose. Safe questions about services, examples, portfolio, company info, or next steps can be answered by AI when approved knowledge exists. Pricing, meeting, proposal, complaint, stop/opt-out, unclear custom scope, or strong buying intent must hand off to the owner. Never recommend replying after a complaint or opt-out.",
+    "Classify inbound B2B sales replies for Virtuprose. The assistant should answer sales-related questions and continue qualifying the lead. HOT_LEAD, PRICING_REQUEST, and MEETING_REQUEST should notify the owner, but they can still receive a safe automatic reply if the draft uses approved knowledge and asks one next question. Only complaint, unsubscribe/stop, unsafe content, or genuinely unclear intent should block automatic replies. Never recommend replying after a complaint or opt-out.",
   whatsappReply:
-    "Write a short WhatsApp reply. Sound human and direct. Ask one clear question. Do not mention AI. If they ask for examples, share the approved portfolio link. Do not invent prices, timelines, guarantees, meetings, availability, or portfolio claims.",
+    "Write a short WhatsApp reply like a calm sales person. Answer the question directly when it is about Virtuprose services. Ask exactly one useful question at the end. If they ask for examples, share the approved portfolio link. If they ask price, use only approved pricing guidance or ask scope and market. If they ask for a meeting, acknowledge and ask for the best time or contact preference without promising availability. Do not mention AI.",
   emailReply:
-    "Write a concise professional email reply. Ask one clear qualification question. Use only approved facts. If they ask for examples, share the approved portfolio link. Do not invent prices, guarantees, availability, timelines, or proof.",
+    "Write a concise professional email reply like a sales person. Answer the question using approved knowledge, then ask exactly one qualification question. If they ask for examples, share the approved portfolio link. If they ask price, use only approved pricing guidance or ask for scope and market. Do not invent guarantees, timelines, availability, or proof.",
   safety:
-    "Hand off to the owner for hot leads, pricing, proposals, meetings, complaints, opt-outs, unclear intent, custom scope, or anything requiring promises."
+    "Continue sales conversations automatically when safe. Notify the owner for hot leads, pricing, proposals, and meetings, but do not stop replying unless the lead complains, asks to stop, shares sensitive data, asks for unsupported promises, or the intent is too unclear to answer safely."
 };
 
 export const defaultAiAssistantSettings: AiAssistantSettings = {
@@ -102,21 +102,14 @@ export const defaultAiAssistantSettings: AiAssistantSettings = {
     maxReplyDelaySeconds: 5,
     dailyAutoReplyCap: 100
   },
-  handoffIntents: [
-    ReplyIntent.HOT_LEAD,
-    ReplyIntent.MEETING_REQUEST,
-    ReplyIntent.PRICING_REQUEST,
-    ReplyIntent.COMPLAINT,
-    ReplyIntent.UNSUBSCRIBE,
-    ReplyIntent.UNCLEAR
-  ],
+  handoffIntents: [ReplyIntent.COMPLAINT, ReplyIntent.UNSUBSCRIBE, ReplyIntent.UNCLEAR],
   safety: {
     blockOptOuts: true,
     blockComplaints: true,
     blockPricingPromises: true,
     blockMeetingPromises: true,
     requireWhatsapp24HourWindow: true,
-    stopAiAfterOwnerTakeover: true,
+    stopAiAfterOwnerTakeover: false,
     preventDuplicateReplies: true
   },
   prompts: defaultPrompts,
@@ -132,8 +125,15 @@ export const defaultAiAssistantSettings: AiAssistantSettings = {
     ],
     portfolioLinks: ["https://virtuprose.com/portfolio"],
     pricingRules: [
-      "Do not give prices unless the owner has approved exact pricing for that service.",
-      "For pricing questions, ask for scope and hand off to the owner."
+      "Digital marketing in Dubai/UAE: AED 3,000 to 5,000 per month starter, AED 6,000 to 10,000 per month growth. Ad spend is separate.",
+      "Digital marketing in Australia: AUD 1,500 to 2,500 per month starter, AUD 3,000 to 6,000 per month growth.",
+      "Custom website in Dubai/UAE: AED 8,000 to 20,000 per year depending on scope.",
+      "Custom website in Australia: AUD 5,000 to 12,000 per year depending on scope.",
+      "Shopify or WooCommerce store in Dubai/UAE: AED 6,000 to 15,000 per year depending on scope.",
+      "Shopify or WooCommerce store in Australia: AUD 4,000 to 10,000 per year depending on scope.",
+      "Mobile apps are scoped by requirements. Basic Dubai/UAE apps often start around AED 25,000 to 40,000; advanced apps are usually AED 50,000+.",
+      "WhatsApp automation is scoped around conversation flow, handoff rules, and integrations.",
+      "Never invent exact prices, discounts, timelines, or guarantees. Use ranges and ask for scope and market."
     ],
     faqs: [
       "Virtuprose can review a website, store, product idea, or workflow and suggest practical next steps."
@@ -352,7 +352,10 @@ export async function decideAiReplyAutomation({
     InboundReply,
     "id" | "channel" | "intent" | "aiConfidence" | "autoReplyEligible" | "riskFlags" | "ownerActionRequired"
   >;
-  lead: Pick<Lead, "id" | "aiAutoReplyPaused" | "whatsappBotPaused">;
+  lead: Pick<
+    Lead,
+    "id" | "aiAutoReplyPaused" | "aiAutoReplyPauseReason" | "whatsappBotPaused" | "whatsappHandoffReason"
+  >;
   draft: Pick<AiReplyDraft, "id" | "riskFlags" | "status"> | null;
   settings: AiAssistantSettings;
   whatsappWindowOpen: boolean;
@@ -377,12 +380,14 @@ export async function decideAiReplyAutomation({
   if (draft?.status !== AiReplyDraftStatus.DRAFT) reasons.push("AI draft is not sendable.");
   if (reply.aiConfidence < settings.confidence.autoSendMinimum)
     reasons.push("AI confidence is below auto-send level.");
+  const hardStopIntent = shouldHardStopIntent(reply.intent);
   if (!reply.autoReplyEligible) reasons.push("AI marked this reply as not safe for automatic sending.");
-  if (reply.ownerActionRequired) reasons.push("AI says the owner should review this reply.");
+  if (reply.ownerActionRequired && hardStopIntent)
+    reasons.push("AI says the owner should review this reply.");
   if (reply.riskFlags.length || draft?.riskFlags.length) reasons.push("Risk flags need review.");
-  if (settings.handoffIntents.includes(reply.intent))
+  if (settings.handoffIntents.includes(reply.intent) && hardStopIntent)
     reasons.push("This reply should be handed to the owner.");
-  if (lead.aiAutoReplyPaused || (reply.channel === MessageChannel.WHATSAPP && lead.whatsappBotPaused)) {
+  if (isManualLeadAiPause(lead, reply.channel)) {
     reasons.push("AI is off for this lead.");
   }
   if (
@@ -396,7 +401,8 @@ export async function decideAiReplyAutomation({
   if (settings.safety.preventDuplicateReplies && duplicateSentDraftCount > 0) {
     reasons.push("AI already replied to this message.");
   }
-  if (existingOwnerReviewCount > 0) reasons.push("A previous reply for this lead still needs owner review.");
+  if (existingOwnerReviewCount > 0 && hardStopIntent)
+    reasons.push("A previous reply for this lead still needs owner review.");
 
   return {
     shouldAutoSend: reasons.length === 0,
@@ -624,6 +630,35 @@ export function shouldNotifyOwnerForIntent(intent: ReplyIntent) {
     ReplyIntent.PRICING_REQUEST
   ];
   return ownerNotifyIntents.includes(intent);
+}
+
+function shouldHardStopIntent(intent: ReplyIntent) {
+  const hardStopIntents: ReplyIntent[] = [
+    ReplyIntent.COMPLAINT,
+    ReplyIntent.UNSUBSCRIBE,
+    ReplyIntent.UNCLEAR
+  ];
+  return hardStopIntents.includes(intent);
+}
+
+function isManualLeadAiPause(
+  lead: Pick<
+    Lead,
+    "aiAutoReplyPaused" | "aiAutoReplyPauseReason" | "whatsappBotPaused" | "whatsappHandoffReason"
+  >,
+  channel: MessageChannel
+) {
+  const automaticHandoffReasons = new Set([
+    "AI handed this hot lead to the owner.",
+    "Owner handoff for hot lead."
+  ]);
+  const aiPaused = lead.aiAutoReplyPaused && !automaticHandoffReasons.has(lead.aiAutoReplyPauseReason || "");
+  const whatsappPaused =
+    channel === MessageChannel.WHATSAPP &&
+    lead.whatsappBotPaused &&
+    !automaticHandoffReasons.has(lead.whatsappHandoffReason || "");
+
+  return Boolean(aiPaused || whatsappPaused);
 }
 
 function parseChannel(value: unknown, fallback: { enabled: boolean; autoReply: boolean }) {
