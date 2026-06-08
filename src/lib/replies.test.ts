@@ -62,6 +62,18 @@ describe("AI reply triage helpers", () => {
     expect(draft.bodyText).toContain("If this is not useful");
   });
 
+  it("treats simple greetings as safe WhatsApp-style interest", () => {
+    const analysis = analyzeReplyLocally({
+      subject: "WhatsApp reply",
+      bodyText: "Hello, are you there?"
+    });
+
+    expect(analysis.intent).toBe(ReplyIntent.GENERAL_INTEREST);
+    expect(analysis.autoReplyEligible).toBe(true);
+    expect(analysis.confidence).toBeGreaterThanOrEqual(90);
+    expect(analysis.ownerActionRequired).toBe(false);
+  });
+
   it("marks custom project scope as a hot handoff", () => {
     const analysis = analyzeReplyLocally({
       subject: "Project",

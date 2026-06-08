@@ -131,6 +131,25 @@ const hotIntents = new Set<ReplyIntent>([
   ReplyIntent.PRICING_REQUEST
 ]);
 
+const simpleGreetingTexts = new Set([
+  "hi",
+  "hello",
+  "hey",
+  "good morning",
+  "good afternoon",
+  "good evening",
+  "how are you",
+  "how r u",
+  "are you there",
+  "you there",
+  "hello are you there",
+  "hi are you there",
+  "salam",
+  "salaam",
+  "assalamu alaikum",
+  "asalam alaikum"
+]);
+
 export function analyzeReplyLocally({
   subject,
   bodyText
@@ -171,6 +190,23 @@ export function analyzeReplyLocally({
       scoreIntent: 0,
       scoreEngagement: 15,
       dealStage: DealStage.LOST
+    };
+  }
+
+  if (isSimpleGreetingText(bodyText)) {
+    return {
+      intent: ReplyIntent.GENERAL_INTEREST,
+      sentiment: ReplySentiment.POSITIVE,
+      confidence: 90,
+      summary: "The lead sent a simple greeting.",
+      suggestedAction: "Reply naturally and ask one simple qualification question.",
+      ownerActionRequired: false,
+      autoReplyEligible: true,
+      riskFlags: [],
+      leadStatus: LeadStatus.INTERESTED,
+      scoreIntent: 55,
+      scoreEngagement: 70,
+      dealStage: DealStage.ENGAGED
     };
   }
 
@@ -479,6 +515,24 @@ export function generateLocalReplyDraft({
     confidence: analysis.confidence,
     rationale: "Keeps the conversation moving with one qualification question.",
     riskFlags: analysis.riskFlags
+  };
+}
+
+function generateFastWhatsappGreetingDraft({
+  lead
+}: {
+  lead: Pick<Lead, "firstName" | "company" | "email">;
+}): ReplyDraftResult {
+  const firstName = lead.firstName || "there";
+
+  return {
+    provider: "local-fast-whatsapp-reply",
+    model: REPLY_POLICY_VERSION,
+    subject: "",
+    bodyText: `Hi ${firstName}, yes, I am here. Are you looking for help with a website, ecommerce, or an AI workflow?`,
+    confidence: 95,
+    rationale: "Simple greeting fast path for WhatsApp so the assistant can respond immediately.",
+    riskFlags: []
   };
 }
 
@@ -1276,7 +1330,7 @@ export async function updateDealStage(dealId: string, stage: DealStage, notes?: 
 }
 
 async function analyzeReplyWithAiFallback(
-  reply: Pick<InboundReply, "subject" | "bodyText">,
+  reply: Pick<InboundReply, "subject" | "bodyText" | "channel">,
   offer?: Offer | null,
   settings?: AiAssistantSettings,
   conversationMemory: ConversationMemoryItem[] = []
@@ -1284,6 +1338,10 @@ async function analyzeReplyWithAiFallback(
   const fallback = analyzeReplyLocally(reply);
   const apiKey = process.env.OPENAI_API_KEY;
   const model = process.env.OPENAI_REPLY_MODEL || "gpt-4.1-mini";
+
+  if (reply.channel === MessageChannel.WHATSAPP && isSimpleGreetingText(reply.bodyText)) {
+    return fallback;
+  }
 
   if (!apiKey) return fallback;
 
@@ -1404,6 +1462,16 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function isSimpleGreetingText(value: string) {
+  const normalized = value
+    .toLowerCase()
+    .replace(/[^a-z\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return simpleGreetingTexts.has(normalized);
+}
+
 async function generateReplyDraftWithAiFallback({
   reply,
   lead,
@@ -1412,7 +1480,7 @@ async function generateReplyDraftWithAiFallback({
   settings,
   conversationMemory = []
 }: {
-  reply: Pick<InboundReply, "subject" | "bodyText">;
+  reply: Pick<InboundReply, "subject" | "bodyText" | "channel">;
   lead: Lead;
   offer?: Offer | null;
   analysis: ReplyAnalysis;
@@ -1425,6 +1493,14 @@ async function generateReplyDraftWithAiFallback({
 
   if (!apiKey || analysis.intent === ReplyIntent.UNSUBSCRIBE || analysis.intent === ReplyIntent.COMPLAINT) {
     return fallback;
+  }
+
+  if (
+    reply.channel === MessageChannel.WHATSAPP &&
+    analysis.intent === ReplyIntent.GENERAL_INTEREST &&
+    isSimpleGreetingText(reply.bodyText)
+  ) {
+    return generateFastWhatsappGreetingDraft({ lead });
   }
 
   try {

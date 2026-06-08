@@ -47,7 +47,7 @@ describe("AI Assistant auto-reply decisions", () => {
 
   it("allows safe WhatsApp replies at the default confidence floor", async () => {
     const decision = await decideAiReplyAutomation({
-      reply: { ...baseReply, aiConfidence: 80 },
+      reply: { ...baseReply, aiConfidence: 70 },
       lead: baseLead,
       draft: baseDraft,
       settings: {
@@ -61,9 +61,26 @@ describe("AI Assistant auto-reply decisions", () => {
       duplicateSentDraftCount: 0
     });
 
-    expect(defaultAiAssistantSettings.confidence.autoSendMinimum).toBe(80);
+    expect(defaultAiAssistantSettings.confidence.autoSendMinimum).toBe(70);
     expect(decision.shouldAutoSend).toBe(true);
     expect(decision.reasons).toEqual([]);
+  });
+
+  it("blocks safe replies below the default confidence floor", async () => {
+    const decision = await decideAiReplyAutomation({
+      reply: { ...baseReply, aiConfidence: 69 },
+      lead: baseLead,
+      draft: baseDraft,
+      settings: defaultAiAssistantSettings,
+      whatsappWindowOpen: true,
+      openAiConfigured: true,
+      existingOwnerReviewCount: 0,
+      sentToday: 0,
+      duplicateSentDraftCount: 0
+    });
+
+    expect(decision.shouldAutoSend).toBe(false);
+    expect(decision.reasons).toContain("AI confidence is below auto-send level.");
   });
 
   it("blocks hot pricing replies for owner handoff", async () => {
