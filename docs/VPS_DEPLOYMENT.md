@@ -1,6 +1,6 @@
 # Virtuprose Sales Assistant VPS Deployment
 
-Last updated: 2026-06-08
+Last updated: 2026-06-09
 
 This document records the current VPS deployment for the internal Virtuprose Sales Assistant.
 
@@ -46,6 +46,16 @@ Run these on the VPS:
 cd /opt/virtuprose-sales-assistant
 docker compose --env-file .env.production -p virtuprose-sales-assistant -f docker-compose.production.yml up -d --build
 ```
+
+The `app` service runs `npx prisma migrate deploy` before `npm run start`, so new checked-in migrations are applied during deploy. The 2026-06-09 AI sales assistant update adds:
+
+- `conversations`
+- `conversation_messages`
+- `meeting_slots`
+- `meeting_bookings`
+- `SalesLeadStage`, `ConversationStatus`, `ConversationDirection`, `MeetingSlotStatus`, and `MeetingBookingStatus`
+
+Do not run `prisma migrate reset` on production.
 
 Check service status:
 
@@ -182,6 +192,9 @@ ssh root@31.97.213.79 'cd /opt/virtuprose-sales-assistant && docker compose --en
 - Do not start bulk sending until a single test lead/template flow is verified.
 - Inbound WhatsApp replies and AI auto-replies require Meta App Dashboard webhook setup and message/status subscriptions.
 - AI classification and AI reply drafting are configured with `gpt-4.1-mini`; test one live reply before relying on automation.
+- AI replies are designed to be short, same-language English/Arabic sales messages and should collect contact details gradually.
+- WhatsApp conversation history is stored by phone number in the new conversation tables. Test a second message from the same number after deploy.
+- Manual meeting slots must be added in `/ai-assistant` before AI can offer exact meeting times.
 - The AI reply queue is `ai-reply-sending`; confirm worker logs show this queue is ready after deploy.
 - Owner hot-lead alerts are addressed to `moh@virtuprose.com`; production SMTP is configured through `info@virtuprose.com`.
 - Automatic email reply receiving is configured through IMAP for `info@virtuprose.com`.

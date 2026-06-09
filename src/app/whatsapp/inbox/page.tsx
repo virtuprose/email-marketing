@@ -1,7 +1,8 @@
-import { AiReplyDraftStatus, Prisma, ReplyIntent, ReplyStatus } from "@prisma/client";
-import { ArrowLeft, Flame, RotateCcw, Send, UserCheck } from "lucide-react";
+import { AiReplyDraftStatus, MeetingSlotStatus, Prisma, ReplyIntent, ReplyStatus } from "@prisma/client";
+import { ArrowLeft, CalendarDays, Flame, RotateCcw, Send, UserCheck } from "lucide-react";
 import Link from "next/link";
 import {
+  bookMeetingSlotForReply,
   closeInboundReply,
   markInboundReplyHot,
   pauseAiForLeadAction,
@@ -24,7 +25,12 @@ import {
 export const dynamic = "force-dynamic";
 
 const replyInclude = {
-  lead: true,
+  lead: {
+    include: {
+      meetingBookings: { include: { slot: true }, orderBy: { createdAt: "desc" }, take: 2 }
+    }
+  },
+  conversation: { include: { messages: { orderBy: { createdAt: "desc" }, take: 8 } } },
   drafts: { orderBy: { createdAt: "desc" }, take: 1 },
   whatsappMessage: true
 } satisfies Prisma.InboundReplyInclude;
@@ -43,7 +49,7 @@ export default async function WhatsappInboxPage({ searchParams }: PageProps) {
     ...(params.status && params.status in ReplyStatus ? { status: params.status as ReplyStatus } : {})
   };
 
-  const [replies, selectedReply, counts] = await Promise.all([
+  const [replies, selectedReply, counts, availableSlots] = await Promise.all([
     prisma.inboundReply.findMany({
       where,
       include: replyInclude,
@@ -56,7 +62,12 @@ export default async function WhatsappInboxPage({ searchParams }: PageProps) {
           include: replyInclude
         })
       : null,
-    getCounts()
+    getCounts(),
+    prisma.meetingSlot.findMany({
+      where: { status: MeetingSlotStatus.AVAILABLE, startAt: { gte: new Date() } },
+      orderBy: { startAt: "asc" },
+      take: 3
+    })
   ]);
   const activeReply = selectedReply ?? replies[0] ?? null;
 
@@ -144,7 +155,7 @@ export default async function WhatsappInboxPage({ searchParams }: PageProps) {
           </div>
         </section>
 
-        <ReplyDetail reply={activeReply} />
+        <ReplyDetail reply={activeReply} availableSlots={availableSlots} />
       </div>
     </>
   );
@@ -160,7 +171,13 @@ async function getCounts() {
   return { total, hot, draftReady, ownerReview };
 }
 
-function ReplyDetail({ reply }: { reply: ReplyDetailData | null }) {
+function ReplyDetail({
+  reply,
+  availableSlots
+}: {
+  reply: ReplyDetailData | null;
+  availableSlots: Array<{ id: string; startAt: Date; endAt: Date; timezone: string }>;
+}) {
   if (!reply) {
     return (
       <aside className="panel">
@@ -198,6 +215,15 @@ function ReplyDetail({ reply }: { reply: ReplyDetailData | null }) {
             value={reply.lead ? leadStatusLabels[reply.lead.status] : "Unknown"}
           />
           <ProfileRow label="Phone" value={reply.lead?.phoneE164 || reply.fromPhoneE164 || "Unknown"} />
+          <ProfileRow
+            label="Sales stage"
+            value={salesStageLabel(reply.salesStage ?? reply.lead?.salesStage)}
+          />
+          <ProfileRow label="Language" value={reply.language === "ar" ? "Arabic" : "English"} />
+          <ProfileRow
+            label="Missing details"
+            value={reply.missingContactFields.length ? reply.missingContactFields.join(", ") : "None"}
+          />
           <ProfileRow label="Received" value={formatDate(reply.receivedAt)} />
           <ProfileRow
             label="AI for this lead"
@@ -225,6 +251,10 @@ function ReplyDetail({ reply }: { reply: ReplyDetailData | null }) {
           <h3>Incoming WhatsApp message</h3>
           <pre className="email-preview">{reply.bodyText}</pre>
         </div>
+
+        <ConversationTimeline reply={reply} />
+
+        <MeetingBookingPanel reply={reply} availableSlots={availableSlots} />
 
         <div>
           <h3>AI draft</h3>
@@ -308,6 +338,76 @@ function ReplyDetail({ reply }: { reply: ReplyDetailData | null }) {
   );
 }
 
+function ConversationTimeline({ reply }: { reply: ReplyDetailData }) {
+  const messages = reply.conversation?.messages.slice().reverse() ?? [];
+  return (
+    <div>
+      <h3>WhatsApp history</h3>
+      <div className="conversation-timeline">
+        {messages.length ? (
+          messages.map((message) => (
+            <div className={`conversation-message ${message.direction.toLowerCase()}`} key={message.id}>
+              <span>{message.direction === "INBOUND" ? "Customer" : "Assistant"}</span>
+              <p>{message.bodyText}</p>
+              <small>{formatDate(message.createdAt)}</small>
+            </div>
+          ))
+        ) : (
+          <p className="muted">No saved phone-number history yet.</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function MeetingBookingPanel({
+  reply,
+  availableSlots
+}: {
+  reply: ReplyDetailData;
+  availableSlots: Array<{ id: string; startAt: Date; endAt: Date; timezone: string }>;
+}) {
+  const latestBooking = reply.lead?.meetingBookings[0];
+  return (
+    <div className="alert">
+      <strong>
+        <CalendarDays size={16} aria-hidden="true" /> Meeting
+      </strong>
+      {latestBooking ? (
+        <p>
+          {latestBooking.status.replaceAll("_", " ").toLowerCase()} -{" "}
+          {latestBooking.slot
+            ? formatSlot(latestBooking.slot)
+            : latestBooking.preferredTimeText || "time not set"}
+        </p>
+      ) : (
+        <p>No meeting booked yet.</p>
+      )}
+      {availableSlots.length ? (
+        <form action={bookMeetingSlotForReply} className="form-grid">
+          <input type="hidden" name="replyId" value={reply.id} />
+          <input type="hidden" name="returnTo" value={`/whatsapp/inbox?selected=${reply.id}`} />
+          <label className="field">
+            <span>Available slot</span>
+            <select className="select" name="slotId">
+              {availableSlots.map((slot) => (
+                <option key={slot.id} value={slot.id}>
+                  {formatSlot(slot)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button className="secondary-button" type="submit">
+            Book selected slot
+          </button>
+        </form>
+      ) : (
+        <p className="muted">No available slots. Add slots in AI Assistant before booking.</p>
+      )}
+    </div>
+  );
+}
+
 function Metric({ label, value }: { label: string; value: number }) {
   return (
     <div className="panel metric">
@@ -327,6 +427,30 @@ function MiniMetric({ label, value, status }: { label: string; value: string; st
       </p>
     </div>
   );
+}
+
+function salesStageLabel(stage: string | null | undefined) {
+  const labels: Record<string, string> = {
+    NEW_ENQUIRY: "New enquiry",
+    INTERESTED: "Interested",
+    QUALIFIED_LEAD: "Qualified lead",
+    MEETING_REQUESTED: "Meeting requested",
+    MEETING_BOOKED: "Meeting booked",
+    NOT_INTERESTED: "Not interested",
+    FOLLOW_UP_REQUIRED: "Follow-up required"
+  };
+  return stage ? (labels[stage] ?? stage) : "Not set";
+}
+
+function formatSlot(slot: { startAt: Date; endAt: Date; timezone: string }) {
+  return `${new Intl.DateTimeFormat("en", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: slot.timezone
+  }).format(slot.startAt)} ${slot.timezone}`;
 }
 
 function ProfileRow({ label, value }: { label: string; value: string }) {

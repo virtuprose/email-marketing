@@ -1,6 +1,6 @@
 # Virtuprose Sales Assistant Project Progress
 
-Last updated: 2026-06-08
+Last updated: 2026-06-09
 
 ## Product State
 
@@ -12,6 +12,7 @@ Virtuprose Sales Assistant is an internal single-owner platform for:
 - Sending approved Meta WhatsApp templates.
 - Receiving WhatsApp replies through Meta webhooks and email replies through either the inbound webhook fallback or IMAP polling once inbox credentials are configured.
 - Using AI Assistant to classify replies, draft safe responses, auto-reply only when rules allow it, and surface hot leads.
+- Using AI Assistant to handle inbound and outbound enquiries with short human-style English/Arabic replies, persistent conversation memory, lead qualification, contact capture, and meeting booking from approved manual slots.
 - Managing safety rules, opt-outs, and do-not-contact records.
 
 ## Completed
@@ -26,9 +27,15 @@ Virtuprose Sales Assistant is an internal single-owner platform for:
 - WhatsApp safety gates for consent, opt-out, STOP language, send caps, and owner approval.
 - AI Assistant page with reply modes, prompts, knowledge base, safety rules, test tool, and activity log.
 - Inbox/replies area with AI classification, draft, safe auto-reply decisioning, and owner handoff.
+- Short sales conversation behavior for inbound and outbound replies, including same-language English/Arabic response handling.
+- Persistent conversation memory through `conversations` and `conversation_messages`; WhatsApp history is tied to phone number.
+- Sales-stage tracking for new enquiry, interested, qualified lead, meeting requested, meeting booked, not interested, and follow-up required.
+- Contact-detail capture and missing-field tracking for name, phone, email, company, service/product needed, and preferred meeting time.
+- Manual meeting slot management in `/ai-assistant` and meeting booking from inbox/WhatsApp inbox.
+- Generic inbound conversation API for website chat and optional Instagram integration at `/api/inbound/conversations`.
 - `ai-reply-sending` BullMQ queue for delayed safe AI replies.
 - Lead-level owner takeover: **AI off for this lead**.
-- Conversation memory for the last 5 same-channel messages before drafting.
+- Unified conversation memory for recent inbound and outbound messages before drafting.
 - Hot lead owner alert logic for `moh@virtuprose.com`.
 - IMAP polling worker for email reply ingestion, gated by IMAP env vars.
 - Hot Leads view for owner handoff.
@@ -85,7 +92,10 @@ Pending/verify on VPS:
 - Meta WhatsApp credentials are present.
 - WhatsApp sending is in live mode.
 - AI Assistant is available from the sidebar.
-- AI can classify replies, create drafts, and queue Auto Safe replies when all safety rules pass.
+- AI can classify replies, create short human-style drafts, queue Auto Safe replies when all safety rules pass, and respond in English or Arabic based on customer language.
+- AI stores inbound and outbound conversation history for future context.
+- AI can identify missing contact details, update sales stage, and create meeting requests.
+- Owner can add manual meeting slots and book available slots from inbox pages.
 - Hot, pricing, and meeting replies hand off to the owner and send alert emails to `moh@virtuprose.com`.
 - SMTP and IMAP authentication are verified for `info@virtuprose.com`.
 - Existing UI and workflow pages are available.
@@ -99,7 +109,10 @@ Implemented:
 - AI Assistant settings stored under `ai_assistant_settings`.
 - Default mode is **Auto Safe**.
 - Safe replies can auto-send only when confidence is high, no handoff/risk flags exist, the lead is not paused/suppressed, duplicate checks pass, caps are available, and the WhatsApp 24-hour service window is open when the channel is WhatsApp.
-- Unsafe, hot, pricing, meeting, complaint, unsubscribe, unclear, low-confidence, or owner-taken-over conversations create drafts and owner handoff instead of auto-sending.
+- Complaint, unsubscribe, unclear, low-confidence, risky, or owner-taken-over conversations create drafts or owner review instead of auto-sending.
+- Hot, pricing, and meeting conversations notify the owner while still allowing a safe short reply when the draft is eligible.
+- AI uses unified conversation history instead of only recent raw channel records.
+- AI can offer only stored available meeting slots and otherwise asks for the customer's preferred time.
 
 Pending:
 
@@ -118,6 +131,7 @@ Pending/verify:
 
 - Confirm the Meta App Dashboard callback is still subscribed to message and status events after the app changes.
 - Send a test WhatsApp reply to confirm webhook delivery, AI classification, and service-window handling.
+- Confirm a second message from the same WhatsApp number loads the previous conversation history in `/whatsapp/inbox`.
 
 ### Email Reply Receiving
 
@@ -148,6 +162,7 @@ Pending:
 - Confirm WhatsApp number quality rating.
 - Keep daily caps low until reply quality and opt-out rate are known.
 - Add recurring database backup job.
+- Add manual meeting slots before relying on AI meeting suggestions.
 
 ## Recommended Next Steps
 

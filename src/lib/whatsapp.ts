@@ -1,7 +1,9 @@
 import {
+  ConversationDirection,
   DealStage,
   LeadEventType,
   LeadStatus,
+  MessageChannel,
   Prisma,
   SendJobStatus,
   SuppressionReason,
@@ -16,6 +18,11 @@ import {
   type WhatsappTemplate
 } from "@prisma/client";
 import { createHmac, timingSafeEqual } from "node:crypto";
+import {
+  detectConversationLanguage,
+  ensureConversationForLead,
+  recordConversationMessage
+} from "@/lib/conversations";
 import { whatsappQueue } from "@/lib/queue";
 import { prisma } from "@/lib/prisma";
 import { ingestWhatsappInboundReply } from "@/lib/replies";
@@ -435,6 +442,25 @@ export async function processWhatsappMessage(messageId: string) {
           leadId: message.leadId,
           metadata: { providerMessageId: result.providerMessageId, dryRun: result.dryRun }
         }
+      });
+      const language = detectConversationLanguage(message.bodyText || "");
+      const conversation = await ensureConversationForLead({
+        tx,
+        leadId: message.leadId,
+        channel: MessageChannel.WHATSAPP,
+        externalContactId: message.toPhoneE164,
+        language
+      });
+      await recordConversationMessage({
+        tx,
+        conversationId: conversation.id,
+        leadId: message.leadId,
+        channel: MessageChannel.WHATSAPP,
+        direction: ConversationDirection.OUTBOUND,
+        bodyText: message.bodyText || "",
+        language,
+        providerMessageId: result.providerMessageId,
+        whatsappMessageId: message.id
       });
     });
     await refreshWhatsappSendJobProgress(message.sendJob.id);

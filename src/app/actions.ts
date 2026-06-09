@@ -10,8 +10,11 @@ import {
   ImportRowStatus,
   LeadEventType,
   LeadStatus,
+  MeetingBookingStatus,
+  MeetingSlotStatus,
   MessageChannel,
   Prisma,
+  SalesLeadStage,
   SendJobStatus,
   SuppressionReason,
   WhatsappCampaignStatus,
@@ -153,6 +156,24 @@ const dealStageSchema = z.object({
   notes: z.string().optional()
 });
 
+const meetingSlotSchema = z.object({
+  startAt: z.string().min(1),
+  durationMinutes: z.coerce.number().int().min(15).max(240),
+  timezone: z.string().min(3).default("Asia/Kuwait"),
+  notes: z.string().optional().or(z.literal(""))
+});
+
+const meetingSlotStatusSchema = z.object({
+  slotId: z.string().min(1),
+  status: z.nativeEnum(MeetingSlotStatus)
+});
+
+const bookMeetingSlotSchema = z.object({
+  replyId: z.string().min(1),
+  slotId: z.string().min(1),
+  returnTo: z.string().optional().or(z.literal(""))
+});
+
 const whatsappTemplateSchema = z.object({
   id: z.string().optional(),
   name: z.string().min(3),
@@ -204,6 +225,17 @@ function audienceWhere(filter: AudienceFilter): Prisma.LeadWhereInput {
     ...(filter.country ? { country: { contains: filter.country, mode: "insensitive" } } : {}),
     ...(filter.tag ? { tags: { some: { name: { equals: filter.tag, mode: "insensitive" } } } } : {})
   };
+}
+
+function parseManualSlotDate(value: string, timezone: string) {
+  const trimmed = value.trim();
+  if (/[zZ]$|[+-]\d{2}:\d{2}$/.test(trimmed)) return new Date(trimmed);
+  const offset = timezone === "Asia/Kuwait" ? "+03:00" : "";
+  const date = new Date(`${trimmed}${trimmed.includes(":") ? ":00" : "T00:00:00"}${offset}`);
+  if (Number.isNaN(date.getTime())) {
+    throw new Error("Enter a valid meeting slot date and time.");
+  }
+  return date;
 }
 
 async function getComplianceSettings(tx: Prisma.TransactionClient | typeof prisma = prisma) {
@@ -1056,6 +1088,161 @@ export async function closeInboundReply(formData: FormData) {
 
   revalidatePath("/inbox");
   redirect(`/inbox?selected=${parsed.replyId}`);
+}
+
+export async function createMeetingSlot(formData: FormData) {
+  const parsed = meetingSlotSchema.parse({
+    startAt: formData.get("startAt"),
+    durationMinutes: formData.get("durationMinutes"),
+    timezone: String(formData.get("timezone") ?? "Asia/Kuwait").trim() || "Asia/Kuwait",
+    notes: String(formData.get("notes") ?? "").trim()
+  });
+  const startAt = parseManualSlotDate(parsed.startAt, parsed.timezone);
+  const endAt = new Date(startAt.getTime() + parsed.durationMinutes * 60_000);
+
+  await prisma.meetingSlot.create({
+    data: {
+      startAt,
+      endAt,
+      timezone: parsed.timezone,
+      notes: parsed.notes || null
+    }
+  });
+
+  await prisma.auditLog.create({
+    data: {
+      action: "meeting_slot.created",
+      entityType: "meeting_slot",
+      metadata: { startAt: startAt.toISOString(), endAt: endAt.toISOString(), timezone: parsed.timezone }
+    }
+  });
+
+  revalidatePath("/ai-assistant");
+}
+
+export async function updateMeetingSlotStatus(formData: FormData) {
+  const parsed = meetingSlotStatusSchema.parse({
+    slotId: formData.get("slotId"),
+    status: formData.get("status")
+  });
+
+  await prisma.meetingSlot.update({
+    where: { id: parsed.slotId },
+    data: {
+      status: parsed.status,
+      bookedLeadId: parsed.status === MeetingSlotStatus.AVAILABLE ? null : undefined
+    }
+  });
+
+  await prisma.auditLog.create({
+    data: {
+      action: "meeting_slot.status_updated",
+      entityType: "meeting_slot",
+      entityId: parsed.slotId,
+      metadata: { status: parsed.status }
+    }
+  });
+
+  revalidatePath("/ai-assistant");
+  revalidatePath("/inbox");
+  revalidatePath("/whatsapp/inbox");
+}
+
+export async function bookMeetingSlotForReply(formData: FormData) {
+  const parsed = bookMeetingSlotSchema.parse({
+    replyId: formData.get("replyId"),
+    slotId: formData.get("slotId"),
+    returnTo: String(formData.get("returnTo") ?? "").trim()
+  });
+  const reply = await prisma.inboundReply.findUnique({
+    where: { id: parsed.replyId },
+    include: { lead: true, conversation: true }
+  });
+  if (!reply?.lead) throw new Error("Reply is not linked to a lead.");
+
+  const slot = await prisma.meetingSlot.findUnique({ where: { id: parsed.slotId } });
+  if (!slot || slot.status !== MeetingSlotStatus.AVAILABLE) {
+    throw new Error("This meeting slot is no longer available.");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.meetingSlot.update({
+      where: { id: slot.id },
+      data: {
+        status: MeetingSlotStatus.BOOKED,
+        bookedLeadId: reply.lead!.id
+      }
+    });
+    await tx.meetingBooking.create({
+      data: {
+        leadId: reply.lead!.id,
+        conversationId: reply.conversationId,
+        slotId: slot.id,
+        status: MeetingBookingStatus.CONFIRMED,
+        contactName: [reply.lead!.firstName, reply.lead!.lastName].filter(Boolean).join(" ") || null,
+        phoneE164: reply.lead!.phoneE164,
+        email: reply.lead!.email,
+        company: reply.lead!.company,
+        serviceNeeded: reply.lead!.serviceNeeded,
+        preferredTimeText: `${slot.startAt.toISOString()} ${slot.timezone}`,
+        confirmedAt: new Date()
+      }
+    });
+    await tx.lead.update({
+      where: { id: reply.lead!.id },
+      data: {
+        status: LeadStatus.HOT,
+        salesStage: SalesLeadStage.MEETING_BOOKED,
+        nextActionAt: slot.startAt,
+        scoreIntent: Math.max(reply.lead!.scoreIntent, 100),
+        scoreEngagement: Math.max(reply.lead!.scoreEngagement, 90)
+      }
+    });
+    if (reply.conversationId) {
+      await tx.conversation.update({
+        where: { id: reply.conversationId },
+        data: {
+          stage: SalesLeadStage.MEETING_BOOKED,
+          status: "OWNER_HANDOFF",
+          ownerHandoffRequired: true,
+          scoreIntent: 100,
+          totalScore: 100,
+          lastMessageAt: new Date()
+        }
+      });
+    }
+    await tx.inboundReply.update({
+      where: { id: reply.id },
+      data: {
+        salesStage: SalesLeadStage.MEETING_BOOKED,
+        ownerActionRequired: true,
+        aiSuggestedAction: "Meeting booked. Owner should prepare and join/confirm the call."
+      }
+    });
+    await tx.leadEvent.create({
+      data: {
+        leadId: reply.lead!.id,
+        type: LeadEventType.STATUS_CHANGED,
+        message: "Meeting booked from AI inbox.",
+        metadata: { replyId: reply.id, slotId: slot.id, startAt: slot.startAt.toISOString() }
+      }
+    });
+    await tx.auditLog.create({
+      data: {
+        action: "meeting_booking.confirmed",
+        entityType: "inbound_reply",
+        entityId: reply.id,
+        metadata: { leadId: reply.lead!.id, slotId: slot.id, startAt: slot.startAt.toISOString() }
+      }
+    });
+  });
+
+  revalidatePath("/");
+  revalidatePath("/ai-assistant");
+  revalidatePath("/inbox");
+  revalidatePath("/whatsapp/inbox");
+  revalidatePath("/pipeline");
+  redirect(parsed.returnTo || `/inbox?selected=${parsed.replyId}`);
 }
 
 export async function updatePipelineDealStage(formData: FormData) {

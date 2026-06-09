@@ -189,6 +189,45 @@ enum DealStatus {
 enum MessageChannel {
   EMAIL
   WHATSAPP
+  WEBSITE_CHAT
+  INSTAGRAM
+}
+
+enum SalesLeadStage {
+  NEW_ENQUIRY
+  INTERESTED
+  QUALIFIED_LEAD
+  MEETING_REQUESTED
+  MEETING_BOOKED
+  NOT_INTERESTED
+  FOLLOW_UP_REQUIRED
+}
+
+enum ConversationStatus {
+  OPEN
+  OWNER_HANDOFF
+  CLOSED
+  SUPPRESSED
+}
+
+enum ConversationDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum MeetingSlotStatus {
+  AVAILABLE
+  HELD
+  BOOKED
+  UNAVAILABLE
+}
+
+enum MeetingBookingStatus {
+  REQUESTED
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+  NO_SHOW
 }
 
 enum WhatsappLeadStatus {
@@ -338,6 +377,10 @@ model Lead {
   aiAutoReplyPauseReason         String?                     @map("ai_auto_reply_pause_reason")
   ownerNotes                     String?                     @map("owner_notes")
   status                         LeadStatus                  @default(NEW)
+  salesStage                     SalesLeadStage              @default(NEW_ENQUIRY) @map("sales_stage")
+  preferredLanguage              String?                     @map("preferred_language")
+  serviceNeeded                  String?                     @map("service_needed")
+  preferredMeetingTime           String?                     @map("preferred_meeting_time")
   scoreFit                       Int                         @default(0) @map("score_fit")
   scoreEngagement                Int                         @default(0) @map("score_engagement")
   scoreIntent                    Int                         @default(0) @map("score_intent")
@@ -358,6 +401,10 @@ model Lead {
   whatsappCampaignRecipients     WhatsappCampaignRecipient[]
   whatsappMessages               WhatsappMessage[]
   whatsappEvents                 WhatsappEvent[]
+  conversations                  Conversation[]
+  conversationMessages           ConversationMessage[]
+  meetingBookings                MeetingBooking[]
+  bookedMeetingSlots             MeetingSlot[]
 
   @@index([status])
   @@index([phoneE164])
@@ -730,42 +777,49 @@ model UnsubscribeToken {
 }
 
 model InboundReply {
-  id                  String           @id @default(cuid())
-  channel             MessageChannel   @default(EMAIL)
-  leadId              String?          @map("lead_id")
-  campaignId          String?          @map("campaign_id")
-  emailMessageId      String?          @map("email_message_id")
-  whatsappMessageId   String?          @map("whatsapp_message_id")
-  fromEmail           String?          @map("from_email")
-  toEmail             String?          @map("to_email")
-  fromPhoneE164       String?          @map("from_phone_e164")
-  toPhoneE164         String?          @map("to_phone_e164")
-  subject             String
-  bodyText            String           @map("body_text")
-  source              String           @default("manual")
-  providerMessageId   String?          @unique @map("provider_message_id")
-  messageIdHeader     String?          @map("message_id_header")
-  inReplyTo           String?          @map("in_reply_to")
-  raw                 Json?
-  status              ReplyStatus      @default(NEW)
-  intent              ReplyIntent      @default(UNCLEAR)
-  sentiment           ReplySentiment   @default(NEUTRAL)
-  aiConfidence        Int              @default(0) @map("ai_confidence")
-  aiSummary           String?          @map("ai_summary")
-  aiSuggestedAction   String?          @map("ai_suggested_action")
-  ownerActionRequired Boolean          @default(true) @map("owner_action_required")
-  autoReplyEligible   Boolean          @default(false) @map("auto_reply_eligible")
-  riskFlags           String[]         @default([]) @map("risk_flags")
-  receivedAt          DateTime         @default(now()) @map("received_at")
-  createdAt           DateTime         @default(now()) @map("created_at")
-  updatedAt           DateTime         @updatedAt @map("updated_at")
-  lead                Lead?            @relation(fields: [leadId], references: [id], onDelete: SetNull)
-  campaign            Campaign?        @relation(fields: [campaignId], references: [id], onDelete: SetNull)
-  emailMessage        EmailMessage?    @relation(fields: [emailMessageId], references: [id], onDelete: SetNull)
-  whatsappMessage     WhatsappMessage? @relation(fields: [whatsappMessageId], references: [id], onDelete: SetNull)
-  drafts              AiReplyDraft[]
+  id                   String           @id @default(cuid())
+  channel              MessageChannel   @default(EMAIL)
+  leadId               String?          @map("lead_id")
+  conversationId       String?          @map("conversation_id")
+  campaignId           String?          @map("campaign_id")
+  emailMessageId       String?          @map("email_message_id")
+  whatsappMessageId    String?          @map("whatsapp_message_id")
+  fromEmail            String?          @map("from_email")
+  toEmail              String?          @map("to_email")
+  fromPhoneE164        String?          @map("from_phone_e164")
+  toPhoneE164          String?          @map("to_phone_e164")
+  subject              String
+  bodyText             String           @map("body_text")
+  source               String           @default("manual")
+  providerMessageId    String?          @unique @map("provider_message_id")
+  messageIdHeader      String?          @map("message_id_header")
+  inReplyTo            String?          @map("in_reply_to")
+  raw                  Json?
+  status               ReplyStatus      @default(NEW)
+  intent               ReplyIntent      @default(UNCLEAR)
+  sentiment            ReplySentiment   @default(NEUTRAL)
+  aiConfidence         Int              @default(0) @map("ai_confidence")
+  aiSummary            String?          @map("ai_summary")
+  aiSuggestedAction    String?          @map("ai_suggested_action")
+  ownerActionRequired  Boolean          @default(true) @map("owner_action_required")
+  autoReplyEligible    Boolean          @default(false) @map("auto_reply_eligible")
+  riskFlags            String[]         @default([]) @map("risk_flags")
+  language             String?          @map("language")
+  salesStage           SalesLeadStage?  @map("sales_stage")
+  missingContactFields String[]         @default([]) @map("missing_contact_fields")
+  extractedContact     Json?            @map("extracted_contact")
+  receivedAt           DateTime         @default(now()) @map("received_at")
+  createdAt            DateTime         @default(now()) @map("created_at")
+  updatedAt            DateTime         @updatedAt @map("updated_at")
+  lead                 Lead?            @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  conversation         Conversation?    @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  campaign             Campaign?        @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  emailMessage         EmailMessage?    @relation(fields: [emailMessageId], references: [id], onDelete: SetNull)
+  whatsappMessage      WhatsappMessage? @relation(fields: [whatsappMessageId], references: [id], onDelete: SetNull)
+  drafts               AiReplyDraft[]
 
   @@index([leadId])
+  @@index([conversationId])
   @@index([channel])
   @@index([campaignId])
   @@index([whatsappMessageId])
@@ -959,6 +1013,110 @@ model WhatsappEvent {
   @@index([campaignId])
   @@index([leadId])
   @@map("whatsapp_events")
+}
+
+model Conversation {
+  id                   String                @id @default(cuid())
+  leadId               String                @map("lead_id")
+  channel              MessageChannel
+  externalContactId    String?               @map("external_contact_id")
+  language             String?               @map("language")
+  stage                SalesLeadStage        @default(NEW_ENQUIRY)
+  status               ConversationStatus    @default(OPEN)
+  scoreFit             Int                   @default(0) @map("score_fit")
+  scoreEngagement      Int                   @default(0) @map("score_engagement")
+  scoreIntent          Int                   @default(0) @map("score_intent")
+  totalScore           Int                   @default(0) @map("total_score")
+  serviceNeeded        String?               @map("service_needed")
+  preferredMeetingTime String?               @map("preferred_meeting_time")
+  missingContactFields String[]              @default([]) @map("missing_contact_fields")
+  ownerHandoffRequired Boolean               @default(false) @map("owner_handoff_required")
+  lastMessageAt        DateTime              @default(now()) @map("last_message_at")
+  createdAt            DateTime              @default(now()) @map("created_at")
+  updatedAt            DateTime              @updatedAt @map("updated_at")
+  lead                 Lead                  @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  messages             ConversationMessage[]
+  inboundReplies       InboundReply[]
+  meetingBookings      MeetingBooking[]
+
+  @@index([leadId])
+  @@index([channel])
+  @@index([externalContactId])
+  @@index([stage])
+  @@index([status])
+  @@index([lastMessageAt])
+  @@map("conversations")
+}
+
+model ConversationMessage {
+  id                String                @id @default(cuid())
+  conversationId    String                @map("conversation_id")
+  leadId            String?               @map("lead_id")
+  channel           MessageChannel
+  direction         ConversationDirection
+  bodyText          String                @map("body_text")
+  language          String?
+  providerMessageId String?               @unique @map("provider_message_id")
+  inboundReplyId    String?               @map("inbound_reply_id")
+  emailMessageId    String?               @map("email_message_id")
+  whatsappMessageId String?               @map("whatsapp_message_id")
+  aiReplyDraftId    String?               @map("ai_reply_draft_id")
+  raw               Json?
+  createdAt         DateTime              @default(now()) @map("created_at")
+  conversation      Conversation          @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  lead              Lead?                 @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  @@index([conversationId])
+  @@index([leadId])
+  @@index([channel])
+  @@index([direction])
+  @@index([createdAt])
+  @@map("conversation_messages")
+}
+
+model MeetingSlot {
+  id           String            @id @default(cuid())
+  startAt      DateTime          @map("start_at")
+  endAt        DateTime          @map("end_at")
+  timezone     String            @default("Asia/Kuwait")
+  status       MeetingSlotStatus @default(AVAILABLE)
+  notes        String?
+  bookedLeadId String?           @map("booked_lead_id")
+  createdAt    DateTime          @default(now()) @map("created_at")
+  updatedAt    DateTime          @updatedAt @map("updated_at")
+  bookedLead   Lead?             @relation(fields: [bookedLeadId], references: [id], onDelete: SetNull)
+  bookings     MeetingBooking[]
+
+  @@index([startAt])
+  @@index([status])
+  @@index([bookedLeadId])
+  @@map("meeting_slots")
+}
+
+model MeetingBooking {
+  id                String               @id @default(cuid())
+  leadId            String               @map("lead_id")
+  conversationId    String?              @map("conversation_id")
+  slotId            String?              @map("slot_id")
+  status            MeetingBookingStatus @default(REQUESTED)
+  contactName       String?              @map("contact_name")
+  phoneE164         String?              @map("phone_e164")
+  email             String?
+  company           String?
+  serviceNeeded     String?              @map("service_needed")
+  preferredTimeText String?              @map("preferred_time_text")
+  confirmedAt       DateTime?            @map("confirmed_at")
+  createdAt         DateTime             @default(now()) @map("created_at")
+  updatedAt         DateTime             @updatedAt @map("updated_at")
+  lead              Lead                 @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  conversation      Conversation?        @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  slot              MeetingSlot?         @relation(fields: [slotId], references: [id], onDelete: SetNull)
+
+  @@index([leadId])
+  @@index([conversationId])
+  @@index([slotId])
+  @@index([status])
+  @@map("meeting_bookings")
 }
 
 model Deal {

@@ -1,10 +1,12 @@
 import {
   CampaignRecipientStatus,
   CampaignStatus,
+  ConversationDirection,
   EmailEventType,
   EmailMessageStatus,
   LeadEventType,
   LeadStatus,
+  MessageChannel,
   SendJobStatus,
   SendingAccountStatus,
   SuppressionReason,
@@ -14,6 +16,11 @@ import {
 } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import nodemailer from "nodemailer";
+import {
+  detectConversationLanguage,
+  ensureConversationForLead,
+  recordConversationMessage
+} from "@/lib/conversations";
 import { emailQueue } from "@/lib/queue";
 import { prisma } from "@/lib/prisma";
 import { COMPLIANCE_SETTINGS_KEY, parseComplianceSettings } from "@/lib/settings";
@@ -423,6 +430,25 @@ export async function processEmailMessage(messageId: string) {
           leadId: message.leadId,
           metadata: { dryRun: result.dryRun }
         }
+      });
+      const language = detectConversationLanguage(message.bodyText);
+      const conversation = await ensureConversationForLead({
+        tx,
+        leadId: message.leadId,
+        channel: MessageChannel.EMAIL,
+        externalContactId: message.recipientEmail,
+        language
+      });
+      await recordConversationMessage({
+        tx,
+        conversationId: conversation.id,
+        leadId: message.leadId,
+        channel: MessageChannel.EMAIL,
+        direction: ConversationDirection.OUTBOUND,
+        bodyText: `${message.subject}\n${message.bodyText}`,
+        language,
+        providerMessageId: result.providerMessageId,
+        emailMessageId: message.id
       });
       const contactedFromStatuses: LeadStatus[] = [LeadStatus.NEW, LeadStatus.VALIDATED, LeadStatus.QUEUED];
       await tx.lead.update({

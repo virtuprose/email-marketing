@@ -1,6 +1,6 @@
 # Virtuprose Email + WhatsApp Agent Developer Handoff
 
-Last updated: 2026-06-08
+Last updated: 2026-06-09
 
 This project is an internal, single-owner Virtuprose platform for lead import, compliant outbound email, Meta WhatsApp template campaigns, AI Assistant reply handling, and hot-lead handoff. It is not a public SaaS yet. Build decisions should optimize for reliable owner use, compliance, and sender reputation before scale.
 
@@ -10,6 +10,11 @@ This project is an internal, single-owner Virtuprose platform for lead import, c
 - Prisma/Postgres stores leads, suppression, campaigns, messages, events, AI generations, deals, WhatsApp templates, WhatsApp campaigns, WhatsApp messages, and WhatsApp events.
 - Redis/BullMQ backs outbound email and WhatsApp send jobs.
 - AI Assistant is implemented at `/ai-assistant` for reply mode, prompts, knowledge base, safety rules, activity logs, and test classification.
+- AI Assistant now uses a short human sales style by default, replies in the customer's detected language, supports English and Arabic, and collects contact details gradually instead of sending long chatbot-style answers.
+- Persistent conversation memory is implemented through `conversations` and `conversation_messages`. WhatsApp conversations are keyed by phone number, so a second message from the same number loads the stored conversation history.
+- Sales stages are tracked through `SalesLeadStage`: new enquiry, interested, qualified lead, meeting requested, meeting booked, not interested, and follow-up required.
+- Manual meeting availability is stored in `meeting_slots`; AI can only suggest stored available slots. Meeting requests and confirmed bookings are stored in `meeting_bookings`.
+- `/api/inbound/conversations` accepts generic website chat and optional Instagram inbound messages into the same AI reply pipeline.
 - The AI reply worker queue is `ai-reply-sending`.
 - Default AI mode is **Auto Safe**: safe high-confidence replies may send after delay; hot/risky/unclear replies hand off to the owner.
 - Lead-level owner takeover is available through **AI off for this lead** in Replies, WhatsApp Inbox, and Hot Leads.
@@ -50,8 +55,12 @@ flowchart LR
   EmailQueue --> SMTP["SMTP provider"]
   WAQueue --> Meta["Meta WhatsApp Cloud API"]
   Meta --> Webhooks["/api/webhooks/meta/whatsapp"]
-  Webhooks --> Inbox["Inbox + AI classification"]
+  Webhooks --> Memory["Conversation memory"]
+  EmailQueue --> Memory
+  WAQueue --> Memory
+  Memory --> Inbox["Inbox + AI classification"]
   Inbox --> AI["AI Assistant rules + ai-reply-sending queue"]
+  Slots["Manual meeting slots"] --> AI
   AI --> Inbox
   Inbox --> Pipeline["Hot lead pipeline"]
   AI --> Alert["Owner hot-lead alert email"]
@@ -60,7 +69,8 @@ flowchart LR
 Important boundaries:
 
 - `src/lib/whatsapp.ts` owns Meta Cloud API payloads, webhook verification, WhatsApp campaign queueing, consent gates, and provider send logic.
-- `src/lib/replies.ts` owns inbound reply ingestion, AI classification/drafting, conversation memory, suppression detection, AI auto-reply execution, and deal creation.
+- `src/lib/replies.ts` owns inbound reply ingestion, AI classification/drafting, suppression detection, AI auto-reply execution, and deal creation.
+- `src/lib/conversations.ts` owns language detection, contact extraction, sales-stage scoring, conversation records, conversation messages, and manual meeting-slot helpers.
 - `src/lib/ai-assistant.ts` owns AI settings defaults, safe auto-reply decisioning, delayed queue scheduling, owner hot-lead alerts, and AI activity logs.
 - `src/lib/email-inbox.ts` owns IMAP polling for inbound email replies.
 - `src/lib/queue.ts` owns BullMQ queue factories, including `ai-reply-sending`.
@@ -234,6 +244,7 @@ curl "https://graph.facebook.com/v25.0/$META_WABA_ID/message_templates?fields=id
 - AI should hand off hot, risky, unclear, pricing, proposal, or meeting-intent conversations to the owner.
 - AI Auto Safe replies are allowed only when the AI Assistant decision engine approves the channel, confidence, safety, duplicate, cap, owner-takeover, and service-window checks.
 - Start with low caps, for example 25/day, then increase only after quality and delivery are stable.
+- WhatsApp conversation memory is written for both outbound templates and inbound customer replies. The phone number is the durable identity key for repeat conversations.
 
 ## AI Assistant Runbook
 
@@ -252,11 +263,15 @@ settings.key = ai_assistant_settings
 Default behavior:
 
 - **Auto Safe** is on by default.
-- Minimum auto-send confidence is `85`.
+- Minimum auto-send confidence is configurable in `/ai-assistant`; confirm the production value before volume.
 - Draft minimum confidence is `60`.
-- Natural reply delay is `30-120` seconds.
+- Natural reply delay is configurable in `/ai-assistant`.
 - Daily AI auto-reply cap is `100`.
 - Owner hot-lead alerts go to `moh@virtuprose.com`.
+- Replies should be 1-3 short sentences by default, ask one clear question, and avoid long explanations unless the customer asks.
+- AI must detect English vs Arabic and reply in the same language. Arabic should be natural, professional, and GCC-friendly.
+- AI must ask for contact details gradually: name, phone, email, company, service/product needed, and preferred meeting time.
+- AI must not invent meeting availability. It can offer only `meeting_slots.status = AVAILABLE`; otherwise it asks for the customer's preferred time and says the team will confirm.
 
 Auto-send is blocked when any of these are true:
 
@@ -264,7 +279,7 @@ Auto-send is blocked when any of these are true:
 - Channel auto-reply is disabled.
 - OpenAI is missing.
 - Confidence is below the auto-send threshold.
-- Intent is hot lead, meeting request, pricing request, complaint, unsubscribe, or unclear.
+- Intent is complaint, unsubscribe, or unclear.
 - Risk flags are present.
 - The lead is suppressed, stopped, or marked do-not-contact.
 - The owner clicked **AI off for this lead**.
@@ -277,11 +292,12 @@ When blocked, the system creates a draft, logs the reason, and leaves the reply 
 Conversation memory passed to AI:
 
 - Current inbound reply.
-- Last 5 same-channel messages from the lead.
+- Recent messages from the unified conversation timeline.
 - Lead details and current stage.
 - Service/offer context when available.
 - Last AI reply when available.
 - Owner takeover state.
+- Available meeting slots when the lead asks for a meeting.
 
 AI may only answer from approved service records and the AI Assistant knowledge base. If the user asks for unsupported pricing, availability, guarantees, custom scope, or anything risky, AI must hand off instead of inventing.
 
@@ -333,6 +349,22 @@ POST /api/inbound/replies
 Header: x-inbound-secret: <INBOUND_WEBHOOK_SECRET>
 ```
 
+Generic website chat / optional Instagram inbound:
+
+```text
+POST /api/inbound/conversations
+Header: x-inbound-secret: <INBOUND_WEBHOOK_SECRET>
+```
+
+Accepted channels:
+
+```text
+WEBSITE_CHAT
+INSTAGRAM
+```
+
+Use this endpoint only for trusted integrations that can provide the inbound secret. Instagram support is integration plumbing only until Meta Instagram messaging webhooks are connected.
+
 ## Testing And Verification
 
 Run before pushing:
@@ -372,6 +404,10 @@ Lead AI control fields:
 - `aiAutoReplyPaused`
 - `aiAutoReplyPausedAt`
 - `aiAutoReplyPauseReason`
+- `salesStage`
+- `preferredLanguage`
+- `serviceNeeded`
+- `preferredMeetingTime`
 
 Lead WhatsApp fields:
 
@@ -395,6 +431,21 @@ WhatsApp tables:
 - `whatsapp_messages`
 - `whatsapp_events`
 
+Conversation and meeting tables:
+
+- `conversations`
+- `conversation_messages`
+- `meeting_slots`
+- `meeting_bookings`
+
+Important relationships:
+
+- `InboundReply.conversationId` links each inbound turn to the unified conversation timeline.
+- `Conversation.externalContactId` stores the durable channel identity, such as WhatsApp phone number or email address.
+- `ConversationMessage.direction` stores `INBOUND` or `OUTBOUND`.
+- `MeetingSlot.status` controls whether AI can offer the slot.
+- `MeetingBooking.status` stores requested or confirmed meeting outcomes.
+
 Provider mapping:
 
 - `WhatsappTemplate.metaTemplateName` maps to Meta template `name`.
@@ -413,6 +464,8 @@ Provider mapping:
 - Old Twilio-specific secrets should stay removed from `.env.example` and should never be committed.
 - The current dashboard is single-user and protected by Basic Auth, not multi-user role-based auth.
 - Template approval is controlled by Meta; local status must be synced before sends.
+- Manual meeting slots must be added in `/ai-assistant` before AI can offer exact times.
+- Website chat and Instagram inbound use the generic inbound endpoint; full Instagram webhook setup is not yet completed.
 
 ## Git Hygiene
 

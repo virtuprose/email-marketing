@@ -1,6 +1,22 @@
-import { MessageChannel, ReplyStatus } from "@prisma/client";
-import { Bot, Mail, MessageCircle, Save, Send, ShieldCheck, Sparkles, TriangleAlert } from "lucide-react";
-import { testAiAssistantReply, updateAiAssistantSettings } from "@/app/actions";
+import { MeetingSlotStatus, MessageChannel, ReplyStatus } from "@prisma/client";
+import {
+  Bot,
+  CalendarDays,
+  Clock,
+  Mail,
+  MessageCircle,
+  Save,
+  Send,
+  ShieldCheck,
+  Sparkles,
+  TriangleAlert
+} from "lucide-react";
+import {
+  createMeetingSlot,
+  testAiAssistantReply,
+  updateAiAssistantSettings,
+  updateMeetingSlotStatus
+} from "@/app/actions";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
 import {
@@ -19,16 +35,37 @@ import { isMetaWhatsappConfigured, isMetaWhatsappDryRun } from "@/lib/whatsapp";
 export const dynamic = "force-dynamic";
 
 export default async function AiAssistantPage() {
-  const [settings, persistedSetting, lastTestSetting, account, counts, activity, lastReply] =
-    await Promise.all([
-      getAiAssistantSettings(),
-      prisma.setting.findUnique({ where: { key: AI_ASSISTANT_SETTINGS_KEY } }),
-      prisma.setting.findUnique({ where: { key: AI_ASSISTANT_LAST_TEST_KEY } }),
-      ensureDefaultSendingAccount(),
-      getCounts(),
-      recentAiAssistantActivity(18),
-      prisma.inboundReply.findFirst({ orderBy: { receivedAt: "desc" } })
-    ]);
+  const slotHistoryStart = new Date();
+  slotHistoryStart.setDate(slotHistoryStart.getDate() - 1);
+  const [
+    settings,
+    persistedSetting,
+    lastTestSetting,
+    account,
+    counts,
+    activity,
+    lastReply,
+    meetingSlots,
+    meetingBookings
+  ] = await Promise.all([
+    getAiAssistantSettings(),
+    prisma.setting.findUnique({ where: { key: AI_ASSISTANT_SETTINGS_KEY } }),
+    prisma.setting.findUnique({ where: { key: AI_ASSISTANT_LAST_TEST_KEY } }),
+    ensureDefaultSendingAccount(),
+    getCounts(),
+    recentAiAssistantActivity(18),
+    prisma.inboundReply.findFirst({ orderBy: { receivedAt: "desc" } }),
+    prisma.meetingSlot.findMany({
+      where: { startAt: { gte: slotHistoryStart } },
+      orderBy: { startAt: "asc" },
+      take: 10
+    }),
+    prisma.meetingBooking.findMany({
+      include: { lead: true, slot: true, conversation: true },
+      orderBy: { createdAt: "desc" },
+      take: 8
+    })
+  ]);
   const savedSettings = parseAiAssistantSettings(persistedSetting?.value);
   const openAiReady = Boolean(process.env.OPENAI_API_KEY);
   const whatsappReady = isMetaWhatsappConfigured() || isMetaWhatsappDryRun();
@@ -304,6 +341,8 @@ export default async function AiAssistantPage() {
             </div>
           </section>
 
+          <MeetingCalendarPanel slots={meetingSlots} bookings={meetingBookings} />
+
           <section className="panel">
             <div className="panel-header">
               <div>
@@ -420,6 +459,140 @@ function KnowledgeFields({ settings }: { settings: typeof defaultAiAssistantSett
   );
 }
 
+type MeetingSlotItem = {
+  id: string;
+  startAt: Date;
+  endAt: Date;
+  timezone: string;
+  status: MeetingSlotStatus;
+  notes: string | null;
+};
+
+type MeetingBookingItem = {
+  id: string;
+  status: string;
+  createdAt: Date;
+  preferredTimeText: string | null;
+  serviceNeeded: string | null;
+  lead: {
+    firstName: string | null;
+    lastName: string | null;
+    company: string | null;
+    email: string;
+    phoneE164: string | null;
+  };
+  slot: MeetingSlotItem | null;
+};
+
+function MeetingCalendarPanel({
+  slots,
+  bookings
+}: {
+  slots: MeetingSlotItem[];
+  bookings: MeetingBookingItem[];
+}) {
+  return (
+    <section className="panel">
+      <div className="panel-header">
+        <div>
+          <h2>Meeting calendar</h2>
+          <p className="muted">AI can suggest only available slots listed here.</p>
+        </div>
+        <CalendarDays size={18} aria-hidden="true" />
+      </div>
+      <div className="panel-body stack">
+        <form action={createMeetingSlot} className="stack">
+          <div className="form-grid">
+            <label className="field">
+              <span>Slot date and time</span>
+              <input className="input" name="startAt" type="datetime-local" required />
+            </label>
+            <label className="field">
+              <span>Duration</span>
+              <select className="select" name="durationMinutes" defaultValue="30">
+                <option value="15">15 minutes</option>
+                <option value="30">30 minutes</option>
+                <option value="45">45 minutes</option>
+                <option value="60">60 minutes</option>
+              </select>
+            </label>
+          </div>
+          <label className="field">
+            <span>Timezone</span>
+            <input className="input" name="timezone" defaultValue="Asia/Kuwait" />
+          </label>
+          <label className="field">
+            <span>Notes</span>
+            <input className="input" name="notes" placeholder="Optional internal note" />
+          </label>
+          <button className="secondary-button" type="submit">
+            <Clock size={16} aria-hidden="true" /> Add slot
+          </button>
+        </form>
+
+        <div className="stack">
+          <h3>Upcoming slots</h3>
+          {slots.length ? (
+            slots.map((slot) => (
+              <div className="reply-list-item" key={slot.id}>
+                <span className="reply-list-main">
+                  <strong>{formatSlot(slot)}</strong>
+                  <span>{slot.notes || "No note"}</span>
+                </span>
+                <span className="reply-list-meta">
+                  <StatusBadge label={meetingSlotStatusLabel(slot.status)} status={slot.status} />
+                  <form action={updateMeetingSlotStatus}>
+                    <input type="hidden" name="slotId" value={slot.id} />
+                    <input
+                      type="hidden"
+                      name="status"
+                      value={
+                        slot.status === MeetingSlotStatus.AVAILABLE
+                          ? MeetingSlotStatus.UNAVAILABLE
+                          : MeetingSlotStatus.AVAILABLE
+                      }
+                    />
+                    <button className="text-button" type="submit">
+                      {slot.status === MeetingSlotStatus.AVAILABLE ? "Hide" : "Reopen"}
+                    </button>
+                  </form>
+                </span>
+              </div>
+            ))
+          ) : (
+            <div className="empty-state">Add slots before AI offers meeting times.</div>
+          )}
+        </div>
+
+        <div className="stack">
+          <h3>Meeting requests</h3>
+          {bookings.length ? (
+            bookings.map((booking) => (
+              <div className="reply-list-item" key={booking.id}>
+                <span className="reply-list-main">
+                  <strong>{booking.lead.company || booking.lead.firstName || booking.lead.email}</strong>
+                  <span>
+                    {booking.slot ? formatSlot(booking.slot) : booking.preferredTimeText || "Time not set"}
+                  </span>
+                </span>
+                <span className="reply-list-meta">
+                  <StatusBadge
+                    label={booking.status.replaceAll("_", " ").toLowerCase()}
+                    status={booking.status}
+                  />
+                  <span>{formatDate(booking.createdAt)}</span>
+                </span>
+              </div>
+            ))
+          ) : (
+            <div className="empty-state">No meeting requests yet.</div>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function TextAreaField({ name, label, value }: { name: string; label: string; value: string }) {
   return (
     <label className="field">
@@ -427,6 +600,27 @@ function TextAreaField({ name, label, value }: { name: string; label: string; va
       <textarea className="textarea" name={name} defaultValue={value} rows={4} />
     </label>
   );
+}
+
+function formatSlot(slot: Pick<MeetingSlotItem, "startAt" | "endAt" | "timezone">) {
+  return `${new Intl.DateTimeFormat("en", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: slot.timezone
+  }).format(slot.startAt)} ${slot.timezone}`;
+}
+
+function meetingSlotStatusLabel(status: MeetingSlotStatus) {
+  const labels: Record<MeetingSlotStatus, string> = {
+    AVAILABLE: "Available",
+    HELD: "Held",
+    BOOKED: "Booked",
+    UNAVAILABLE: "Unavailable"
+  };
+  return labels[status];
 }
 
 function TestResult({ result }: { result: AiTestResult }) {

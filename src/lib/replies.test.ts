@@ -46,7 +46,7 @@ describe("AI reply triage helpers", () => {
     expect(draft.riskFlags).toContain("Blocked by reply policy.");
   });
 
-  it("drafts proof replies using approved offer facts", () => {
+  it("drafts short proof replies with one qualifying question", () => {
     const analysis = analyzeReplyLocally({
       subject: "Re: examples",
       bodyText: "Can you send portfolio examples?"
@@ -59,8 +59,9 @@ describe("AI reply triage helpers", () => {
     });
 
     expect(analysis.intent).toBe(ReplyIntent.PORTFOLIO_REQUEST);
-    expect(draft.bodyText).toContain("Approved portfolio examples");
-    expect(draft.bodyText).toContain("If this is not useful");
+    expect(draft.bodyText).toContain("share relevant examples");
+    expect(draft.bodyText).toContain("What kind of project");
+    expect(draft.bodyText.split(/[.!?]/).filter(Boolean).length).toBeLessThanOrEqual(3);
   });
 
   it("treats simple greetings as safe WhatsApp-style interest", () => {

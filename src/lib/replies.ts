@@ -1,5 +1,6 @@
 import {
   AiReplyDraftStatus,
+  ConversationDirection,
   DealStage,
   DealStatus,
   EmailEventType,
@@ -31,7 +32,18 @@ import {
   sendHotLeadOwnerAlert,
   type AiAssistantSettings
 } from "./ai-assistant";
-import { isValidEmail, normalizeEmail } from "./imports";
+import {
+  applyConversationSignals,
+  buildSalesConversationSignals,
+  detectConversationLanguage,
+  ensureConversationForLead,
+  externalContactIdForReply,
+  findAvailableMeetingSlots,
+  languageName,
+  recordConversationMessage,
+  type MeetingSlotOption
+} from "./conversations";
+import { isValidEmail, normalizeEmail, normalizePhoneE164 } from "./imports";
 import { prisma } from "./prisma";
 import { refreshSendJobProgress, sendDirectEmail } from "./sending";
 import { sendMetaTextMessage } from "./whatsapp";
@@ -56,6 +68,20 @@ export type WhatsappInboundReplyInput = {
   fromPhoneE164: string;
   toPhoneE164?: string | null;
   subject: string;
+  bodyText: string;
+  source?: string;
+  providerMessageId?: string | null;
+  raw?: Prisma.InputJsonValue;
+};
+
+export type GenericInboundConversationInput = {
+  channel: GenericConversationChannel;
+  externalContactId?: string | null;
+  fromEmail?: string | null;
+  fromPhoneE164?: string | null;
+  name?: string | null;
+  company?: string | null;
+  subject?: string | null;
   bodyText: string;
   source?: string;
   providerMessageId?: string | null;
@@ -93,6 +119,8 @@ type ConversationMemoryItem = {
   text: string;
   at: string;
 };
+
+type GenericConversationChannel = Extract<MessageChannel, "WEBSITE_CHAT" | "INSTAGRAM">;
 
 const analysisSchema = z.object({
   intent: z.nativeEnum(ReplyIntent),
@@ -398,20 +426,26 @@ export function analyzeReplyLocally({
 export function generateLocalReplyDraft({
   reply,
   lead,
-  offer,
-  analysis
+  analysis,
+  availableMeetingSlots = []
 }: {
   reply: Pick<InboundReply, "subject" | "bodyText">;
-  lead: Pick<Lead, "firstName" | "company" | "email">;
+  lead: Pick<Lead, "firstName" | "company" | "email"> & Partial<Pick<Lead, "phoneE164" | "serviceNeeded">>;
   offer?: Pick<Offer, "name" | "valueProposition" | "proofPoints" | "ctaStyle"> | null;
   analysis: ReplyAnalysis;
+  availableMeetingSlots?: MeetingSlotOption[];
 }): ReplyDraftResult {
   const firstName = lead.firstName || "there";
-  const offerName = offer?.name || "Virtuprose work";
-  const proof = offer?.proofPoints[0] || "approved Virtuprose work examples";
   const subject = reply.subject.toLowerCase().startsWith("re:") ? reply.subject : `Re: ${reply.subject}`;
-  const signoff = ["", "Best,", "Virtuprose"].join("\n");
-  const noPressureLine = "If this is not useful, tell me and I will not follow up.";
+  const language = detectConversationLanguage(reply.bodyText);
+  const isArabic = language === "ar";
+  const missingContact = !lead.phoneE164 || lead.email.endsWith("@whatsapp.local");
+  const slotsText = availableMeetingSlots
+    .slice(0, 2)
+    .map((slot) => slot.label)
+    .join(" or ");
+
+  const text = (english: string, arabic: string) => (isArabic ? arabic : english);
 
   if (analysis.intent === ReplyIntent.UNSUBSCRIBE || analysis.intent === ReplyIntent.COMPLAINT) {
     return {
@@ -430,7 +464,7 @@ export function generateLocalReplyDraft({
       provider: "local-reply-agent",
       model: REPLY_POLICY_VERSION,
       subject,
-      bodyText: [`Hi ${firstName},`, "", "Understood. I will not keep following up.", signoff].join("\n"),
+      bodyText: text("Understood, I will not keep following up.", "تمام، لن نتابع معك مرة أخرى."),
       confidence: analysis.confidence,
       rationale: "Acknowledges the decline without pressure.",
       riskFlags: []
@@ -442,16 +476,10 @@ export function generateLocalReplyDraft({
       provider: "local-reply-agent",
       model: REPLY_POLICY_VERSION,
       subject,
-      bodyText: [
-        `Hi ${firstName},`,
-        "",
-        `Yes. The most relevant proof for ${offerName} is: ${proof}.`,
-        "",
-        "If you share the website or workflow you want improved, I can reply with a concise review focused on practical fixes.",
-        "",
-        noPressureLine,
-        signoff
-      ].join("\n"),
+      bodyText: text(
+        "Sure, I can share relevant examples. What kind of project are you looking for: website, ecommerce, app, or AI automation?",
+        "أكيد، أقدر أشاركك أمثلة مناسبة. شنو نوع المشروع المطلوب: موقع، متجر إلكتروني، تطبيق، أو أتمتة بالذكاء الاصطناعي؟"
+      ),
       confidence: analysis.confidence,
       rationale: "Uses approved proof point and asks for one useful next input.",
       riskFlags: []
@@ -463,17 +491,49 @@ export function generateLocalReplyDraft({
       provider: "local-reply-agent",
       model: REPLY_POLICY_VERSION,
       subject,
-      bodyText: [
-        `Hi ${firstName},`,
-        "",
+      bodyText: text(
         "Thanks for letting me know. Who would be the right person to speak with about this?",
-        "",
-        noPressureLine,
-        signoff
-      ].join("\n"),
+        "شكراً للتوضيح. من الشخص المناسب للتواصل معه بخصوص هذا الموضوع؟"
+      ),
       confidence: analysis.confidence,
       rationale: "Asks for a referral without continuing pressure.",
       riskFlags: []
+    };
+  }
+
+  if (analysis.intent === ReplyIntent.MEETING_REQUEST) {
+    const bodyText = slotsText
+      ? text(
+          `Sure, I can arrange a short call with our team. We have ${slotsText}; which time works better?`,
+          `أكيد، أقدر أرتب لك مكالمة قصيرة مع الفريق. المتاح عندنا ${slotsText}، أي وقت يناسبك؟`
+        )
+      : text(
+          "Sure, I can arrange a short call with our team. Please share your preferred time and phone or email, and the team will confirm.",
+          "أكيد، أقدر أرتب لك مكالمة قصيرة مع الفريق. أرسل الوقت المناسب ورقم التواصل أو الإيميل، والفريق راح يؤكد لك."
+        );
+    return {
+      provider: "local-reply-agent",
+      model: REPLY_POLICY_VERSION,
+      subject,
+      bodyText,
+      confidence: analysis.confidence,
+      rationale: "Uses only available meeting slots or asks for preferred time when no slots exist.",
+      riskFlags: []
+    };
+  }
+
+  if (analysis.intent === ReplyIntent.PRICING_REQUEST) {
+    return {
+      provider: "local-reply-agent",
+      model: REPLY_POLICY_VERSION,
+      subject,
+      bodyText: text(
+        "Pricing depends on the scope, but I can guide you quickly. Is this for a website, ecommerce store, app, or AI automation?",
+        "السعر يعتمد على نطاق العمل، لكن أقدر أوجهك بسرعة. هل المطلوب موقع، متجر إلكتروني، تطبيق، أو أتمتة بالذكاء الاصطناعي؟"
+      ),
+      confidence: analysis.confidence,
+      rationale: "Avoids exact pricing and asks one scope question.",
+      riskFlags: analysis.riskFlags
     };
   }
 
@@ -482,18 +542,15 @@ export function generateLocalReplyDraft({
       provider: "local-reply-agent",
       model: REPLY_POLICY_VERSION,
       subject,
-      bodyText: [
-        `Hi ${firstName},`,
-        "",
-        "Thanks for replying. This sounds worth handling directly so I can understand the scope properly.",
-        "",
-        `For context, Virtuprose can help with ${offerName.toLowerCase()}. ${offer?.valueProposition ?? ""}`.trim(),
-        "",
-        "Could you share the website/link and the main outcome you want from this? I will review it and come back with the next step.",
-        "",
-        noPressureLine,
-        signoff
-      ].join("\n"),
+      bodyText: missingContact
+        ? text(
+            "Sounds good. I can arrange a quick call with our team. Please share your phone or email.",
+            "تمام. أقدر أرتب لك مكالمة سريعة مع الفريق. ممكن ترسل رقم التواصل أو الإيميل؟"
+          )
+        : text(
+            "Sounds good. What is the main outcome you want from this project?",
+            "تمام. شنو أهم نتيجة تبي توصل لها من هذا المشروع؟"
+          ),
       confidence: analysis.confidence,
       rationale: "Creates a safe owner handoff without inventing pricing or availability.",
       riskFlags: analysis.riskFlags
@@ -504,16 +561,10 @@ export function generateLocalReplyDraft({
     provider: "local-reply-agent",
     model: REPLY_POLICY_VERSION,
     subject,
-    bodyText: [
-      `Hi ${firstName},`,
-      "",
-      `Thanks for replying. Based on what you shared, ${offerName.toLowerCase()} may be relevant if the priority is improving clarity, trust, or the sales path.`,
-      "",
-      "What is the main issue you want fixed right now?",
-      "",
-      noPressureLine,
-      signoff
-    ].join("\n"),
+    bodyText: text(
+      `Hi ${firstName}, thanks for reaching out. Are you looking for help with a website, ecommerce, an app, or AI automation?`,
+      "حياك الله، شكراً لتواصلك. هل تحتاج مساعدة في موقع، متجر إلكتروني، تطبيق، أو أتمتة بالذكاء الاصطناعي؟"
+    ),
     confidence: analysis.confidence,
     rationale: "Keeps the conversation moving with one qualification question.",
     riskFlags: analysis.riskFlags
@@ -521,9 +572,11 @@ export function generateLocalReplyDraft({
 }
 
 function generateFastWhatsappGreetingDraft({
-  lead
+  lead,
+  language = "en"
 }: {
   lead: Pick<Lead, "firstName" | "company" | "email">;
+  language?: string;
 }): ReplyDraftResult {
   const firstName = lead.firstName || "there";
 
@@ -531,7 +584,10 @@ function generateFastWhatsappGreetingDraft({
     provider: "local-fast-whatsapp-reply",
     model: REPLY_POLICY_VERSION,
     subject: "",
-    bodyText: `Hi ${firstName}, yes, I am here. Are you looking for help with a website, ecommerce, or an AI workflow?`,
+    bodyText:
+      language === "ar"
+        ? "حياك الله، نعم موجودين. هل تحتاج مساعدة في موقع، متجر إلكتروني، أو أتمتة بالذكاء الاصطناعي؟"
+        : `Hi ${firstName}, yes, I am here. Are you looking for help with a website, ecommerce, or AI automation?`,
     confidence: 95,
     rationale: "Simple greeting fast path for WhatsApp so the assistant can respond immediately.",
     riskFlags: []
@@ -560,10 +616,18 @@ export async function ingestInboundReply(input: InboundReplyInput) {
   const campaign = message
     ? await prisma.campaign.findUnique({ where: { id: message.campaignId }, include: { offer: true } })
     : null;
+  const language = detectConversationLanguage(input.bodyText);
+  const conversation = await ensureConversationForLead({
+    leadId: lead.id,
+    channel: MessageChannel.EMAIL,
+    externalContactId: fromEmail,
+    language
+  });
 
   const reply = await prisma.inboundReply.create({
     data: {
       leadId: lead.id,
+      conversationId: conversation.id,
       channel: MessageChannel.EMAIL,
       campaignId: message?.campaignId ?? null,
       emailMessageId: message?.id ?? null,
@@ -571,12 +635,26 @@ export async function ingestInboundReply(input: InboundReplyInput) {
       toEmail: input.toEmail ? normalizeEmail(input.toEmail) : null,
       subject: input.subject.trim() || "(no subject)",
       bodyText: input.bodyText.trim(),
+      language,
       source: input.source || "manual",
       providerMessageId: input.providerMessageId || null,
       messageIdHeader: input.messageIdHeader || null,
       inReplyTo: input.inReplyTo || null,
       ...(input.raw ? { raw: input.raw } : {})
     }
+  });
+
+  await recordConversationMessage({
+    conversationId: conversation.id,
+    leadId: lead.id,
+    channel: MessageChannel.EMAIL,
+    direction: ConversationDirection.INBOUND,
+    bodyText: `${reply.subject}\n${reply.bodyText}`,
+    language,
+    providerMessageId: input.providerMessageId || null,
+    inboundReplyId: reply.id,
+    emailMessageId: message?.id ?? null,
+    raw: input.raw
   });
 
   await prisma.emailEvent.create({
@@ -614,6 +692,13 @@ export async function ingestWhatsappInboundReply(input: WhatsappInboundReplyInpu
 
   const lead = await prisma.lead.findUnique({ where: { id: input.leadId } });
   if (!lead) throw new Error("Inbound WhatsApp reply must be linked to a lead.");
+  const language = detectConversationLanguage(input.bodyText);
+  const conversation = await ensureConversationForLead({
+    leadId: lead.id,
+    channel: MessageChannel.WHATSAPP,
+    externalContactId: input.fromPhoneE164,
+    language
+  });
 
   const message = await prisma.whatsappMessage.findUnique({
     where: { id: input.whatsappMessageId },
@@ -623,20 +708,105 @@ export async function ingestWhatsappInboundReply(input: WhatsappInboundReplyInpu
   const reply = await prisma.inboundReply.create({
     data: {
       leadId: lead.id,
+      conversationId: conversation.id,
       channel: MessageChannel.WHATSAPP,
       whatsappMessageId: input.whatsappMessageId,
       fromPhoneE164: input.fromPhoneE164,
       toPhoneE164: input.toPhoneE164 || null,
       subject: input.subject.trim() || "WhatsApp reply",
       bodyText: input.bodyText.trim(),
+      language,
       source: input.source || "meta_whatsapp",
       providerMessageId: input.providerMessageId || null,
       ...(input.raw ? { raw: input.raw } : {})
     }
   });
 
+  await recordConversationMessage({
+    conversationId: conversation.id,
+    leadId: lead.id,
+    channel: MessageChannel.WHATSAPP,
+    direction: ConversationDirection.INBOUND,
+    bodyText: reply.bodyText,
+    language,
+    providerMessageId: input.providerMessageId || null,
+    inboundReplyId: reply.id,
+    whatsappMessageId: input.whatsappMessageId,
+    raw: input.raw
+  });
+
   return {
     reply: await processInboundReply(reply.id, message?.campaign?.offer ?? null),
+    duplicate: false
+  };
+}
+
+export async function ingestGenericInboundConversation(input: GenericInboundConversationInput) {
+  if (!input.bodyText.trim()) {
+    throw new Error("Inbound message body cannot be empty.");
+  }
+  if (input.providerMessageId) {
+    const existing = await prisma.inboundReply.findUnique({
+      where: { providerMessageId: input.providerMessageId },
+      include: { lead: true, drafts: { orderBy: { createdAt: "desc" }, take: 1 } }
+    });
+    if (existing) return { reply: existing, duplicate: true };
+  }
+
+  const normalizedEmail = input.fromEmail ? normalizeEmail(input.fromEmail) : "";
+  const normalizedPhone = input.fromPhoneE164 ? normalizePhoneE164(input.fromPhoneE164) : "";
+  const lead = await ensureLeadForGenericConversation({
+    channel: input.channel,
+    email: normalizedEmail && isValidEmail(normalizedEmail) ? normalizedEmail : null,
+    phoneE164: normalizedPhone || null,
+    name: input.name || null,
+    company: input.company || null,
+    source: input.source || input.channel.toLowerCase()
+  });
+  const language = detectConversationLanguage(input.bodyText);
+  const externalContactId =
+    input.externalContactId ||
+    (input.channel === MessageChannel.INSTAGRAM ? normalizedPhone || normalizedEmail || lead.email : null) ||
+    normalizedPhone ||
+    normalizedEmail ||
+    lead.email;
+  const conversation = await ensureConversationForLead({
+    leadId: lead.id,
+    channel: input.channel,
+    externalContactId,
+    language
+  });
+
+  const reply = await prisma.inboundReply.create({
+    data: {
+      leadId: lead.id,
+      conversationId: conversation.id,
+      channel: input.channel,
+      fromEmail: normalizedEmail && isValidEmail(normalizedEmail) ? normalizedEmail : null,
+      fromPhoneE164: normalizedPhone || null,
+      subject: input.subject?.trim() || channelSubject(input.channel),
+      bodyText: input.bodyText.trim(),
+      language,
+      source: input.source || input.channel.toLowerCase(),
+      providerMessageId: input.providerMessageId || null,
+      ...(input.raw ? { raw: input.raw } : {})
+    }
+  });
+
+  await recordConversationMessage({
+    conversationId: conversation.id,
+    leadId: lead.id,
+    channel: input.channel,
+    direction: ConversationDirection.INBOUND,
+    bodyText: reply.bodyText,
+    language,
+    providerMessageId: input.providerMessageId || null,
+    inboundReplyId: reply.id,
+    raw: input.raw
+  });
+
+  return {
+    reply: await processInboundReply(reply.id, null),
     duplicate: false
   };
 }
@@ -646,6 +816,7 @@ export async function processInboundReply(replyId: string, knownOffer?: Offer | 
     where: { id: replyId },
     include: {
       lead: true,
+      conversation: true,
       campaign: { include: { offer: true } },
       emailMessage: true,
       whatsappMessage: { include: { campaign: { include: { offer: true } } } }
@@ -655,6 +826,15 @@ export async function processInboundReply(replyId: string, knownOffer?: Offer | 
   if (!reply.lead) throw new Error("Inbound reply is not linked to a lead.");
 
   const lead = reply.lead;
+  const replyLanguage = reply.language || detectConversationLanguage(reply.bodyText);
+  const conversation =
+    reply.conversation ??
+    (await ensureConversationForLead({
+      leadId: lead.id,
+      channel: reply.channel,
+      externalContactId: externalContactIdForReply(reply.channel, reply),
+      language: replyLanguage
+    }));
   const settings = await getAiAssistantSettings();
   if (!settings.enabled || settings.mode === "PAUSED") {
     await prisma.$transaction(async (tx) => {
@@ -696,8 +876,10 @@ export async function processInboundReply(replyId: string, knownOffer?: Offer | 
   const conversationMemory = await buildConversationMemory({
     leadId: lead.id,
     channel: reply.channel,
-    currentReplyId: reply.id
+    currentReplyId: reply.id,
+    conversationId: conversation.id
   });
+  const availableMeetingSlots = await findAvailableMeetingSlots(3);
   const analysis = await analyzeReplyWithAiFallback(reply, offer, settings, conversationMemory);
   const shouldSuppress =
     analysis.intent === ReplyIntent.UNSUBSCRIBE || analysis.intent === ReplyIntent.COMPLAINT;
@@ -707,13 +889,22 @@ export async function processInboundReply(replyId: string, knownOffer?: Offer | 
     offer,
     analysis,
     settings,
-    conversationMemory
+    conversationMemory,
+    availableMeetingSlots
   });
   const stopped = await stopQueuedFollowUpsForLead(lead.id, reply.campaignId);
   const stoppedWhatsapp = await stopQueuedWhatsappMessagesForLead(lead.id, reply.whatsappMessage?.campaignId);
   const nextActionAt = nextActionForAnalysis(analysis);
   const status = replyStatusForAnalysis(analysis);
   const fitScore = scoreFit(lead);
+  const signals = buildSalesConversationSignals({
+    reply,
+    lead,
+    intent: analysis.intent,
+    scoreIntent: analysis.scoreIntent,
+    scoreEngagement: analysis.scoreEngagement,
+    fitScore
+  });
   let createdDraftId: string | null = null;
 
   await prisma.$transaction(async (tx) => {
@@ -728,7 +919,12 @@ export async function processInboundReply(replyId: string, knownOffer?: Offer | 
         aiSuggestedAction: analysis.suggestedAction,
         ownerActionRequired: analysis.ownerActionRequired,
         autoReplyEligible: analysis.autoReplyEligible,
-        riskFlags: analysis.riskFlags
+        riskFlags: analysis.riskFlags,
+        conversationId: conversation.id,
+        language: signals.language,
+        salesStage: signals.stage,
+        missingContactFields: signals.missingContactFields,
+        extractedContact: signals.contactDetails as Prisma.InputJsonObject
       }
     });
 
@@ -744,6 +940,14 @@ export async function processInboundReply(replyId: string, knownOffer?: Offer | 
           ? "AI notified the owner and continued the sales conversation."
           : lead.whatsappHandoffReason
       }
+    });
+
+    await applyConversationSignals({
+      tx,
+      lead,
+      conversationId: conversation.id,
+      signals,
+      replyId: reply.id
     });
 
     await tx.leadEvent.create({
@@ -853,6 +1057,10 @@ export async function processInboundReply(replyId: string, knownOffer?: Offer | 
           leadId: lead.id,
           intent: analysis.intent,
           confidence: analysis.confidence,
+          salesStage: signals.stage,
+          language: signals.language,
+          missingContactFields: signals.missingContactFields,
+          totalScore: signals.totalScore,
           stoppedQueuedFollowUps: stopped.skipped,
           stoppedQueuedWhatsappMessages: stoppedWhatsapp.skipped,
           promptVersion: REPLY_POLICY_VERSION,
@@ -957,6 +1165,19 @@ export async function sendAiReplyDraft(draftId: string, sendingAccountId?: strin
   });
 
   const sent = await prisma.$transaction(async (tx) => {
+    const language = draft.reply.language || detectConversationLanguage(draft.bodyText);
+    const conversation = draft.reply.conversationId
+      ? await tx.conversation.update({
+          where: { id: draft.reply.conversationId },
+          data: { language, lastMessageAt: new Date() }
+        })
+      : await ensureConversationForLead({
+          tx,
+          leadId: lead.id,
+          channel: MessageChannel.EMAIL,
+          externalContactId: lead.email,
+          language
+        });
     const updated = await tx.aiReplyDraft.update({
       where: { id: draft.id },
       data: {
@@ -981,6 +1202,18 @@ export async function sendAiReplyDraft(draftId: string, sendingAccountId?: strin
           dryRun: result.dryRun
         }
       }
+    });
+    await recordConversationMessage({
+      tx,
+      conversationId: conversation.id,
+      leadId: lead.id,
+      channel: MessageChannel.EMAIL,
+      direction: ConversationDirection.OUTBOUND,
+      bodyText: `${draft.subject}\n${draft.bodyText}`,
+      language,
+      providerMessageId: result.providerMessageId,
+      inboundReplyId: draft.replyId,
+      aiReplyDraftId: draft.id
     });
     await tx.leadEvent.create({
       data: {
@@ -1041,6 +1274,19 @@ async function sendWhatsappAiReplyDraft(draftId: string) {
   });
 
   const sent = await prisma.$transaction(async (tx) => {
+    const language = draft.reply.language || detectConversationLanguage(draft.bodyText);
+    const conversation = draft.reply.conversationId
+      ? await tx.conversation.update({
+          where: { id: draft.reply.conversationId },
+          data: { language, lastMessageAt: new Date() }
+        })
+      : await ensureConversationForLead({
+          tx,
+          leadId: draft.lead!.id,
+          channel: MessageChannel.WHATSAPP,
+          externalContactId: draft.lead!.phoneE164,
+          language
+        });
     const message = await tx.whatsappMessage.create({
       data: {
         leadId: draft.lead!.id,
@@ -1076,6 +1322,19 @@ async function sendWhatsappAiReplyDraft(draftId: string) {
           dryRun: result.dryRun
         }
       }
+    });
+    await recordConversationMessage({
+      tx,
+      conversationId: conversation.id,
+      leadId: draft.lead!.id,
+      channel: MessageChannel.WHATSAPP,
+      direction: ConversationDirection.OUTBOUND,
+      bodyText: draft.bodyText,
+      language,
+      providerMessageId: result.providerMessageId,
+      inboundReplyId: draft.replyId,
+      whatsappMessageId: message.id,
+      aiReplyDraftId: draft.id
     });
     await tx.leadEvent.create({
       data: {
@@ -1212,6 +1471,10 @@ export async function previewAiAssistantReply({
     aiAutoReplyPauseReason: null,
     ownerNotes: null,
     status: LeadStatus.REPLIED,
+    salesStage: "INTERESTED",
+    preferredLanguage: null,
+    serviceNeeded: null,
+    preferredMeetingTime: null,
     scoreFit: 50,
     scoreEngagement: 50,
     scoreIntent: 0,
@@ -1221,6 +1484,7 @@ export async function previewAiAssistantReply({
     updatedAt: new Date()
   } as Lead;
 
+  const availableMeetingSlots = await findAvailableMeetingSlots(3);
   const analysis = await analyzeReplyWithAiFallback(reply, offer, settings, []);
   const draft = await generateReplyDraftWithAiFallback({
     reply,
@@ -1228,7 +1492,8 @@ export async function previewAiAssistantReply({
     offer,
     analysis,
     settings,
-    conversationMemory: []
+    conversationMemory: [],
+    availableMeetingSlots
   });
   const decision = await decidePreviewAutomation({ channel, analysis, draft, settings });
 
@@ -1359,6 +1624,9 @@ async function analyzeReplyWithAiFallback(
                 "Classify inbound B2B sales replies for Virtuprose. Output only JSON.",
               settings?.prompts.safety || "",
               "Output only JSON.",
+              "Detect whether the customer is writing in English or Arabic. Use GCC-friendly interpretation for Arabic sales enquiries.",
+              "Classify the sales stage separately in your reasoning: new enquiry, interested, qualified lead, meeting requested, meeting booked, not interested, or follow-up required.",
+              "Prioritize booking/contact capture when intent is serious, but do not ask for every detail at once.",
               "HOT_LEAD, PRICING_REQUEST, and MEETING_REQUEST should usually be autoReplyEligible true and ownerActionRequired false when the message can be answered safely. They should still notify the owner through intent.",
               "Only set ownerActionRequired true when the user asks to stop, complains, sends unsafe content, asks for unsupported promises, or the intent is too unclear.",
               "Never recommend replying after unsubscribe or complaint. Do not invent facts, prices, guarantees, availability, portfolio claims, or unsupported proof."
@@ -1477,7 +1745,8 @@ async function generateReplyDraftWithAiFallback({
   offer,
   analysis,
   settings,
-  conversationMemory = []
+  conversationMemory = [],
+  availableMeetingSlots = []
 }: {
   reply: Pick<InboundReply, "subject" | "bodyText" | "channel">;
   lead: Lead;
@@ -1485,10 +1754,12 @@ async function generateReplyDraftWithAiFallback({
   analysis: ReplyAnalysis;
   settings?: AiAssistantSettings;
   conversationMemory?: ConversationMemoryItem[];
+  availableMeetingSlots?: MeetingSlotOption[];
 }) {
-  const fallback = generateLocalReplyDraft({ reply, lead, offer, analysis });
+  const fallback = generateLocalReplyDraft({ reply, lead, offer, analysis, availableMeetingSlots });
   const apiKey = process.env.OPENAI_API_KEY;
   const model = process.env.OPENAI_REPLY_MODEL || "gpt-4.1-mini";
+  const detectedLanguage = detectConversationLanguage(reply.bodyText);
 
   if (!apiKey || analysis.intent === ReplyIntent.UNSUBSCRIBE || analysis.intent === ReplyIntent.COMPLAINT) {
     return fallback;
@@ -1499,7 +1770,7 @@ async function generateReplyDraftWithAiFallback({
     analysis.intent === ReplyIntent.GENERAL_INTEREST &&
     isSimpleGreetingText(reply.bodyText)
   ) {
-    return generateFastWhatsappGreetingDraft({ lead });
+    return generateFastWhatsappGreetingDraft({ lead, language: detectedLanguage });
   }
 
   try {
@@ -1521,9 +1792,12 @@ async function generateReplyDraftWithAiFallback({
                 ? "Use only the approved knowledge base and current offer context. If the lead asks for pricing, use approved pricing ranges when they match the service and market; otherwise ask for scope and market. If the lead asks for a meeting, acknowledge and ask for the best time or contact preference without promising availability. If the lead wants help with a project, ask one practical scope question and keep the conversation moving."
                 : "",
               "Output only JSON.",
-              "For WhatsApp, keep the reply short, human, and conversational with no subject-line wording. Use 2 to 4 short sentences.",
-              "For email, stay concise and professional. Use 2 to 4 short paragraphs at most.",
+              `Detected customer language: ${languageName(detectedLanguage)}. Reply in that language only.`,
+              "For WhatsApp, keep the reply short, human, and conversational with no subject-line wording. Use 1 to 3 short sentences.",
+              "For email, stay concise and professional. Use 1 to 3 short paragraphs at most.",
               "Always ask exactly one clear question at the end.",
+              "If missing contact details are needed, ask for only one or two details, not the full form at once.",
+              "If availableMeetingSlots are present and the lead asks for a meeting, offer only those exact slot labels. If no availableMeetingSlots are present, ask for the customer's preferred time and say the team will confirm.",
               "Do not mention AI. Do not mention fake availability, fake case studies, unsupported claims, exact timelines, guarantees, or exact prices outside approved pricing guidance."
             ]
               .filter(Boolean)
@@ -1542,6 +1816,7 @@ async function generateReplyDraftWithAiFallback({
               offer,
               approvedKnowledge: settings?.knowledgeBase,
               conversationMemory,
+              availableMeetingSlots,
               analysis
             })
           }
@@ -1604,15 +1879,85 @@ async function ensureLeadForReply(email: string) {
   });
 }
 
+async function ensureLeadForGenericConversation({
+  channel,
+  email,
+  phoneE164,
+  name,
+  company,
+  source
+}: {
+  channel: GenericConversationChannel;
+  email?: string | null;
+  phoneE164?: string | null;
+  name?: string | null;
+  company?: string | null;
+  source: string;
+}) {
+  if (email) {
+    const existingByEmail = await prisma.lead.findUnique({ where: { email } });
+    if (existingByEmail) return existingByEmail;
+  }
+  if (phoneE164) {
+    const existingByPhone = await prisma.lead.findUnique({ where: { phoneE164 } });
+    if (existingByPhone) return existingByPhone;
+  }
+
+  const [firstName, ...lastNameParts] = (name || "").trim().split(/\s+/).filter(Boolean);
+  const syntheticEmail =
+    email ||
+    `${channel.toLowerCase()}-${(phoneE164 || cryptoSafeContactId()).replace(/\D/g, "") || Date.now()}@conversation.local`;
+
+  return prisma.lead.create({
+    data: {
+      email: syntheticEmail,
+      phoneE164: phoneE164 || null,
+      firstName: firstName || null,
+      lastName: lastNameParts.length ? lastNameParts.join(" ") : null,
+      company: company || null,
+      source,
+      legalBasis: "Inbound conversation",
+      consentNotes: `Created from inbound ${channel.toLowerCase()} conversation.`,
+      status: LeadStatus.REPLIED,
+      salesStage: "NEW_ENQUIRY",
+      preferredLanguage: null,
+      scoreEngagement: 50
+    }
+  });
+}
+
 async function buildConversationMemory({
   leadId,
   channel,
-  currentReplyId
+  currentReplyId,
+  conversationId
 }: {
   leadId: string;
   channel: MessageChannel;
   currentReplyId: string;
+  conversationId?: string | null;
 }): Promise<ConversationMemoryItem[]> {
+  if (conversationId) {
+    const messages = await prisma.conversationMessage.findMany({
+      where: { conversationId },
+      orderBy: { createdAt: "desc" },
+      take: 8
+    });
+    const memory = messages
+      .reverse()
+      .filter((message) => Boolean(message.bodyText))
+      .slice(-6)
+      .map((message) => ({
+        channel: message.channel,
+        direction: (message.direction === ConversationDirection.INBOUND ? "inbound" : "outbound") as
+          | "inbound"
+          | "outbound",
+        text: message.bodyText,
+        at: message.createdAt.toISOString()
+      }));
+    if (memory.length) return memory;
+  }
+
   if (channel === MessageChannel.WHATSAPP) {
     const messages = await prisma.whatsappMessage.findMany({
       where: { leadId },
@@ -1839,6 +2184,17 @@ function scoreFit(lead: Lead) {
 function dealTitle(lead: Pick<Lead, "company" | "email">, offer?: Pick<Offer, "name"> | null) {
   const account = lead.company || lead.email;
   return offer ? `${account} - ${offer.name}` : `${account} - Virtuprose opportunity`;
+}
+
+function channelSubject(channel: MessageChannel) {
+  if (channel === MessageChannel.INSTAGRAM) return "Instagram enquiry";
+  if (channel === MessageChannel.WEBSITE_CHAT) return "Website chat enquiry";
+  if (channel === MessageChannel.WHATSAPP) return "WhatsApp reply";
+  return "Inbound reply";
+}
+
+function cryptoSafeContactId() {
+  return `${Date.now()}${Math.floor(Math.random() * 1_000_000)}`;
 }
 
 function matchesAny(text: string, terms: string[]) {

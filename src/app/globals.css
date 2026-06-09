@@ -982,6 +982,54 @@ tr:last-child td {
   font-size: 13px;
 }
 
+.text-button {
+  border: 0;
+  background: transparent;
+  color: var(--action-primary);
+  padding: 0;
+  font-size: 13px;
+  font-weight: 720;
+  cursor: pointer;
+}
+
+.text-button:hover,
+.text-button:focus-visible {
+  color: var(--action-primary-strong);
+  text-decoration: underline;
+}
+
+.conversation-timeline {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.conversation-message {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  background: #fbfaf7;
+}
+
+.conversation-message.outbound {
+  border-color: rgba(15, 118, 110, 0.22);
+  background: rgba(15, 118, 110, 0.06);
+}
+
+.conversation-message span,
+.conversation-message small {
+  display: block;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.conversation-message p {
+  margin: 5px 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .pipeline-board {
   display: grid;
   grid-template-columns: repeat(6, minmax(260px, 1fr));

@@ -1,6 +1,6 @@
 # Virtuprose AI Email Sales Agent
 
-Internal single-user product for importing leads, managing suppression/compliance data, preparing Virtuprose offers, generating reviewed AI-assisted email campaign drafts, sending compliant email campaigns, running Meta WhatsApp Cloud API template campaigns, and using an AI sales assistant to classify, draft, safely auto-reply, and hand off hot leads.
+Internal single-user product for importing leads, managing suppression/compliance data, preparing Virtuprose offers, generating reviewed AI-assisted email campaign drafts, sending compliant email campaigns, running Meta WhatsApp Cloud API template campaigns, and using a bilingual AI sales assistant to qualify enquiries, collect contact details, book meetings from approved slots, safely auto-reply, and hand off hot leads.
 
 ## Current Deployment
 
@@ -130,8 +130,12 @@ Do not disable dry-run for production until SPF, DKIM, DMARC, mailbox warmup, an
 - `/ai-assistant` control center for reply mode, prompts, knowledge base, safety rules, activity, and test classification.
 - Reply modes: Auto Safe, Draft Only, Test Mode, and Paused.
 - Auto Safe replies only send when confidence, safety, channel, service-window, daily-cap, duplicate, and owner-takeover checks pass.
+- Default reply style is short, human, sales-focused, and same-language. English and Arabic are supported; Arabic should read naturally for GCC and international customers.
 - Reply classification into hot lead, pricing request, meeting request, proof request, objection, not interested, unsubscribe, complaint, and unclear.
-- Conversation memory includes recent same-channel messages so drafts are not context blind.
+- Conversation memory is stored in `conversations` and `conversation_messages`. WhatsApp memory is keyed by phone number so repeat messages from the same number load prior history.
+- Lead sales stages are tracked as new enquiry, interested, qualified lead, meeting requested, meeting booked, not interested, or follow-up required.
+- Contact capture tracks missing name, phone, email, company, service/product needed, and preferred meeting time.
+- Manual meeting slots are managed in `/ai-assistant`; AI can only suggest available stored slots and must not invent availability.
 - Lead-level **AI off for this lead** takeover is available in Replies, WhatsApp Inbox, and Hot Leads.
 - Hot-lead, pricing, and meeting intent trigger owner handoff and an owner alert email to `moh@virtuprose.com`.
 - Reply-safe suppression handling for unsubscribe and complaint language.
@@ -141,6 +145,18 @@ Do not disable dry-run for production until SPF, DKIM, DMARC, mailbox warmup, an
 - `ai-reply-sending` worker queue handles delayed AI auto-replies.
 - IMAP polling for email replies is configured on production for `info@virtuprose.com`.
 - Inbound webhook endpoint remains available as an advanced fallback and is protected by `INBOUND_WEBHOOK_SECRET`.
+- Generic inbound conversation endpoint is available for website chat and optional Instagram DM integrations:
+
+```bash
+POST /api/inbound/conversations
+Header: x-inbound-secret: <INBOUND_WEBHOOK_SECRET>
+Body: {
+  "channel": "WEBSITE_CHAT",
+  "name": "Maya",
+  "fromEmail": "maya@example.com",
+  "bodyText": "Hi, I need a website for my company."
+}
+```
 
 ## Ready-To-Use Internal Workflow
 

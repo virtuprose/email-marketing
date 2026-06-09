@@ -1,7 +1,15 @@
-import { AiReplyDraftStatus, Prisma, ReplyIntent, ReplyStatus, SendingAccountStatus } from "@prisma/client";
-import { Bot, Flame, Inbox, RotateCcw, Send, Sparkles, UserCheck } from "lucide-react";
+import {
+  AiReplyDraftStatus,
+  MeetingSlotStatus,
+  Prisma,
+  ReplyIntent,
+  ReplyStatus,
+  SendingAccountStatus
+} from "@prisma/client";
+import { Bot, CalendarDays, Flame, Inbox, RotateCcw, Send, Sparkles, UserCheck } from "lucide-react";
 import Link from "next/link";
 import {
+  bookMeetingSlotForReply,
   closeInboundReply,
   createManualInboundReply,
   markInboundReplyHot,
@@ -34,7 +42,12 @@ type InboxPageProps = {
 };
 
 const replyInclude = {
-  lead: true,
+  lead: {
+    include: {
+      meetingBookings: { include: { slot: true }, orderBy: { createdAt: "desc" }, take: 2 }
+    }
+  },
+  conversation: { include: { messages: { orderBy: { createdAt: "desc" }, take: 8 } } },
   campaign: { include: { offer: true } },
   drafts: { orderBy: { createdAt: "desc" }, take: 1 }
 } satisfies Prisma.InboundReplyInclude;
@@ -52,7 +65,7 @@ export default async function InboxPage({ searchParams }: InboxPageProps) {
     where.status = params.status as ReplyStatus;
   }
 
-  const [replies, selectedReply, counts, sendingAccounts] = await Promise.all([
+  const [replies, selectedReply, counts, sendingAccounts, availableSlots] = await Promise.all([
     prisma.inboundReply.findMany({
       where,
       include: replyInclude,
@@ -69,6 +82,11 @@ export default async function InboxPage({ searchParams }: InboxPageProps) {
     prisma.sendingAccount.findMany({
       where: { status: SendingAccountStatus.ACTIVE },
       orderBy: { createdAt: "asc" }
+    }),
+    prisma.meetingSlot.findMany({
+      where: { status: MeetingSlotStatus.AVAILABLE, startAt: { gte: new Date() } },
+      orderBy: { startAt: "asc" },
+      take: 3
     })
   ]);
 
@@ -145,7 +163,11 @@ export default async function InboxPage({ searchParams }: InboxPageProps) {
           </div>
         </section>
 
-        <ReplyDetailPanel reply={activeReply} sendingAccounts={sendingAccounts} />
+        <ReplyDetailPanel
+          reply={activeReply}
+          sendingAccounts={sendingAccounts}
+          availableSlots={availableSlots}
+        />
       </div>
     </>
   );
@@ -255,10 +277,12 @@ function FilterPanel({ params }: { params: { intent?: string; status?: string } 
 
 function ReplyDetailPanel({
   reply,
-  sendingAccounts
+  sendingAccounts,
+  availableSlots
 }: {
   reply: ReplyDetail | null;
   sendingAccounts: Array<{ id: string; name: string; dryRun: boolean; status: SendingAccountStatus }>;
+  availableSlots: Array<{ id: string; startAt: Date; endAt: Date; timezone: string }>;
 }) {
   if (!reply) {
     return (
@@ -295,6 +319,15 @@ function ReplyDetailPanel({
           />
           <ProfileRow label="Campaign" value={reply.campaign?.name || "Not matched"} />
           <ProfileRow label="Service" value={reply.campaign?.offer.name || "Not matched"} />
+          <ProfileRow
+            label="Sales stage"
+            value={salesStageLabel(reply.salesStage ?? reply.lead?.salesStage)}
+          />
+          <ProfileRow label="Language" value={reply.language === "ar" ? "Arabic" : "English"} />
+          <ProfileRow
+            label="Missing details"
+            value={reply.missingContactFields.length ? reply.missingContactFields.join(", ") : "None"}
+          />
           <ProfileRow label="Received" value={formatDate(reply.receivedAt)} />
           <ProfileRow
             label="AI for this lead"
@@ -322,6 +355,10 @@ function ReplyDetailPanel({
           <h3>What they said</h3>
           <pre className="email-preview">{reply.bodyText}</pre>
         </div>
+
+        <ConversationTimeline reply={reply} />
+
+        <MeetingBookingPanel reply={reply} availableSlots={availableSlots} />
 
         <div>
           <h3>Suggested reply</h3>
@@ -422,6 +459,76 @@ function ReplyDetailPanel({
   );
 }
 
+function ConversationTimeline({ reply }: { reply: ReplyDetail }) {
+  const messages = reply.conversation?.messages.slice().reverse() ?? [];
+  return (
+    <div>
+      <h3>Conversation history</h3>
+      <div className="conversation-timeline">
+        {messages.length ? (
+          messages.map((message) => (
+            <div className={`conversation-message ${message.direction.toLowerCase()}`} key={message.id}>
+              <span>{message.direction === "INBOUND" ? "Customer" : "Assistant"}</span>
+              <p>{message.bodyText}</p>
+              <small>{formatDate(message.createdAt)}</small>
+            </div>
+          ))
+        ) : (
+          <p className="muted">No saved history yet.</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function MeetingBookingPanel({
+  reply,
+  availableSlots
+}: {
+  reply: ReplyDetail;
+  availableSlots: Array<{ id: string; startAt: Date; endAt: Date; timezone: string }>;
+}) {
+  const latestBooking = reply.lead?.meetingBookings[0];
+  return (
+    <div className="alert">
+      <strong>
+        <CalendarDays size={16} aria-hidden="true" /> Meeting
+      </strong>
+      {latestBooking ? (
+        <p>
+          {latestBooking.status.replaceAll("_", " ").toLowerCase()} -{" "}
+          {latestBooking.slot
+            ? formatSlot(latestBooking.slot)
+            : latestBooking.preferredTimeText || "time not set"}
+        </p>
+      ) : (
+        <p>No meeting booked yet.</p>
+      )}
+      {availableSlots.length ? (
+        <form action={bookMeetingSlotForReply} className="form-grid">
+          <input type="hidden" name="replyId" value={reply.id} />
+          <input type="hidden" name="returnTo" value={`/inbox?selected=${reply.id}`} />
+          <label className="field">
+            <span>Available slot</span>
+            <select className="select" name="slotId">
+              {availableSlots.map((slot) => (
+                <option key={slot.id} value={slot.id}>
+                  {formatSlot(slot)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button className="secondary-button" type="submit">
+            Book selected slot
+          </button>
+        </form>
+      ) : (
+        <p className="muted">No available slots. Add slots in AI Assistant before booking.</p>
+      )}
+    </div>
+  );
+}
+
 function Metric({
   icon,
   label,
@@ -459,6 +566,30 @@ function confidenceLabel(score: number) {
   if (score >= 80) return `High confidence (${score}%)`;
   if (score >= 55) return `Needs review (${score}%)`;
   return `Do not auto-send (${score}%)`;
+}
+
+function salesStageLabel(stage: string | null | undefined) {
+  const labels: Record<string, string> = {
+    NEW_ENQUIRY: "New enquiry",
+    INTERESTED: "Interested",
+    QUALIFIED_LEAD: "Qualified lead",
+    MEETING_REQUESTED: "Meeting requested",
+    MEETING_BOOKED: "Meeting booked",
+    NOT_INTERESTED: "Not interested",
+    FOLLOW_UP_REQUIRED: "Follow-up required"
+  };
+  return stage ? (labels[stage] ?? stage) : "Not set";
+}
+
+function formatSlot(slot: { startAt: Date; endAt: Date; timezone: string }) {
+  return `${new Intl.DateTimeFormat("en", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: slot.timezone
+  }).format(slot.startAt)} ${slot.timezone}`;
 }
 
 function ProfileRow({ label, value }: { label: string; value: string }) {
