@@ -186,6 +186,19 @@ export function CsvImportClient() {
     setMapping({});
     setPreview(null);
     setError("");
+
+    if (!value.trim()) return;
+
+    const parsed = parsePastedSpreadsheet(value);
+    if (!parsed.ok) {
+      setError(parsed.error);
+      return;
+    }
+
+    setPastedFile(new File([parsed.csvText], "pasted-leads.csv", { type: "text/csv" }));
+    setHeaders(parsed.headers);
+    setRows(parsed.rows.slice(0, 12));
+    setMapping(guessMapping(parsed.headers));
   }
 
   async function checkRows() {
