@@ -135,9 +135,10 @@ Do not disable dry-run for production until SPF, DKIM, DMARC, mailbox warmup, an
 - Conversation memory is stored in `conversations` and `conversation_messages`. WhatsApp memory is keyed by phone number so repeat messages from the same number load prior history.
 - Lead sales stages are tracked as new enquiry, interested, qualified lead, meeting requested, meeting booked, not interested, or follow-up required.
 - Contact capture tracks missing name, phone, email, company, service/product needed, and preferred meeting time.
-- Manual meeting slots are managed in `/ai-assistant`; AI can only suggest available stored slots and must not invent availability.
+- Meeting slots are managed in `/ai-assistant`; the default weekly generator creates 30-minute Asia/Kuwait slots for Sunday-Thursday 10:00 AM-6:00 PM, Saturday 12:30 PM-8:00 PM, and no Friday slots. AI can only suggest available stored slots and must not invent availability.
 - Lead-level **AI off for this lead** takeover is available in Replies, WhatsApp Inbox, and Hot Leads.
 - Hot-lead, pricing, and meeting intent trigger owner handoff and an owner alert email to `moh@virtuprose.com`.
+- Confirmed AI meeting bookings can send a separate owner email alert from the configurable `/ai-assistant` notification setting.
 - Reply-safe suppression handling for unsubscribe and complaint language.
 - Automatic stopping of queued follow-ups after a lead replies.
 - Hot-lead scoring with fit, engagement, and intent scores.

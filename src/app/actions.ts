@@ -52,9 +52,11 @@ import {
   AI_ASSISTANT_LAST_TEST_KEY,
   aiAssistantFormSchema,
   saveAiAssistantSettings,
+  sendMeetingBookedOwnerAlert,
   settingsFromForm
 } from "@/lib/ai-assistant";
 import { COMPLIANCE_SETTINGS_KEY, parseComplianceSettings } from "@/lib/settings";
+import { generateDefaultMeetingAvailability } from "@/lib/meeting-availability";
 import {
   SENDING_CONTROL_SETTINGS_KEY,
   scheduleCampaignSend,
@@ -657,6 +659,8 @@ export async function updateAiAssistantSettings(formData: FormData) {
     enabled: formData.get("enabled") === "on",
     mode: formData.get("mode"),
     ownerHotLeadEmail: formData.get("ownerHotLeadEmail"),
+    meetingBookedEmailEnabled: formData.get("meetingBookedEmailEnabled") === "on",
+    meetingBookedEmailRecipient: formData.get("meetingBookedEmailRecipient"),
     whatsappEnabled: formData.get("whatsappEnabled") === "on",
     whatsappAutoReply: formData.get("whatsappAutoReply") === "on",
     emailEnabled: formData.get("emailEnabled") === "on",
@@ -686,7 +690,12 @@ export async function updateAiAssistantSettings(formData: FormData) {
       action: "ai_assistant.settings_updated",
       entityType: "settings",
       entityId: "ai_assistant_settings",
-      metadata: { mode: settings.mode, ownerHotLeadEmail: settings.ownerHotLeadEmail }
+      metadata: {
+        mode: settings.mode,
+        ownerHotLeadEmail: settings.ownerHotLeadEmail,
+        meetingBookedEmailEnabled: settings.notifications.meetingBookedEmail.enabled,
+        meetingBookedEmailRecipient: settings.notifications.meetingBookedEmail.recipientEmail
+      }
     }
   });
 
@@ -1120,6 +1129,14 @@ export async function createMeetingSlot(formData: FormData) {
   revalidatePath("/ai-assistant");
 }
 
+export async function generateDefaultMeetingAvailabilityAction() {
+  await generateDefaultMeetingAvailability();
+
+  revalidatePath("/ai-assistant");
+  revalidatePath("/inbox");
+  revalidatePath("/whatsapp/inbox");
+}
+
 export async function updateMeetingSlotStatus(formData: FormData) {
   const parsed = meetingSlotStatusSchema.parse({
     slotId: formData.get("slotId"),
@@ -1165,7 +1182,7 @@ export async function bookMeetingSlotForReply(formData: FormData) {
     throw new Error("This meeting slot is no longer available.");
   }
 
-  await prisma.$transaction(async (tx) => {
+  const bookingId = await prisma.$transaction(async (tx) => {
     await tx.meetingSlot.update({
       where: { id: slot.id },
       data: {
@@ -1173,7 +1190,7 @@ export async function bookMeetingSlotForReply(formData: FormData) {
         bookedLeadId: reply.lead!.id
       }
     });
-    await tx.meetingBooking.create({
+    const booking = await tx.meetingBooking.create({
       data: {
         leadId: reply.lead!.id,
         conversationId: reply.conversationId,
@@ -1235,7 +1252,10 @@ export async function bookMeetingSlotForReply(formData: FormData) {
         metadata: { leadId: reply.lead!.id, slotId: slot.id, startAt: slot.startAt.toISOString() }
       }
     });
+    return booking.id;
   });
+
+  await sendMeetingBookedOwnerAlert(bookingId);
 
   revalidatePath("/");
   revalidatePath("/ai-assistant");

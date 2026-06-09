@@ -194,8 +194,9 @@ ssh root@31.97.213.79 'cd /opt/virtuprose-sales-assistant && docker compose --en
 - AI classification and AI reply drafting are configured with `gpt-4.1-mini`; test one live reply before relying on automation.
 - AI replies are designed to be short, same-language English/Arabic sales messages and should collect contact details gradually.
 - WhatsApp conversation history is stored by phone number in the new conversation tables. Test a second message from the same number after deploy.
-- Manual meeting slots must be added in `/ai-assistant` before AI can offer exact meeting times.
+- Meeting slots must exist in `/ai-assistant` before AI can offer exact meeting times. Use **Apply availability** to generate 30-minute Asia/Kuwait slots for Sunday-Thursday 10:00 AM-6:00 PM, Saturday 12:30 PM-8:00 PM, and Friday off.
 - The AI reply queue is `ai-reply-sending`; confirm worker logs show this queue is ready after deploy.
 - Owner hot-lead alerts are addressed to `moh@virtuprose.com`; production SMTP is configured through `info@virtuprose.com`.
+- Meeting-booked owner alerts are configurable in `/ai-assistant` and are logged under `ai_assistant.meeting_booked_alert_*`.
 - Automatic email reply receiving is configured through IMAP for `info@virtuprose.com`.
 - Email volume still requires domain deliverability setup and inbox-placement testing.

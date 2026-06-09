@@ -23,6 +23,9 @@ export type AiAssistantSettings = {
   enabled: boolean;
   mode: AiAssistantMode;
   ownerHotLeadEmail: string;
+  notifications: {
+    meetingBookedEmail: { enabled: boolean; recipientEmail: string };
+  };
   channels: {
     whatsapp: { enabled: boolean; autoReply: boolean };
     email: { enabled: boolean; autoReply: boolean };
@@ -89,6 +92,9 @@ export const defaultAiAssistantSettings: AiAssistantSettings = {
   enabled: true,
   mode: "AUTO_SAFE",
   ownerHotLeadEmail: "moh@virtuprose.com",
+  notifications: {
+    meetingBookedEmail: { enabled: true, recipientEmail: "moh@virtuprose.com" }
+  },
   channels: {
     whatsapp: { enabled: true, autoReply: true },
     email: { enabled: true, autoReply: true }
@@ -163,6 +169,8 @@ export const aiAssistantFormSchema = z.object({
   enabled: z.boolean(),
   mode: z.enum(aiAssistantModes),
   ownerHotLeadEmail: z.string().email(),
+  meetingBookedEmailEnabled: z.boolean(),
+  meetingBookedEmailRecipient: z.string().email(),
   whatsappEnabled: z.boolean(),
   whatsappAutoReply: z.boolean(),
   emailEnabled: z.boolean(),
@@ -205,6 +213,16 @@ export function parseAiAssistantSettings(value: unknown): AiAssistantSettings {
       : {};
   const safety =
     record.safety && typeof record.safety === "object" ? (record.safety as Record<string, unknown>) : {};
+  const notifications =
+    record.notifications && typeof record.notifications === "object" && !Array.isArray(record.notifications)
+      ? (record.notifications as Record<string, unknown>)
+      : {};
+  const meetingBookedEmail =
+    notifications.meetingBookedEmail &&
+    typeof notifications.meetingBookedEmail === "object" &&
+    !Array.isArray(notifications.meetingBookedEmail)
+      ? (notifications.meetingBookedEmail as Record<string, unknown>)
+      : {};
   const prompts =
     record.prompts && typeof record.prompts === "object" ? (record.prompts as Record<string, unknown>) : {};
   const knowledgeBase =
@@ -215,14 +233,25 @@ export function parseAiAssistantSettings(value: unknown): AiAssistantSettings {
   const mode = aiAssistantModes.includes(record.mode as AiAssistantMode)
     ? (record.mode as AiAssistantMode)
     : defaults.mode;
+  const ownerHotLeadEmail =
+    typeof record.ownerHotLeadEmail === "string" && record.ownerHotLeadEmail.includes("@")
+      ? record.ownerHotLeadEmail
+      : defaults.ownerHotLeadEmail;
 
   return {
     enabled: typeof record.enabled === "boolean" ? record.enabled : defaults.enabled,
     mode,
-    ownerHotLeadEmail:
-      typeof record.ownerHotLeadEmail === "string" && record.ownerHotLeadEmail.includes("@")
-        ? record.ownerHotLeadEmail
-        : defaults.ownerHotLeadEmail,
+    ownerHotLeadEmail,
+    notifications: {
+      meetingBookedEmail: {
+        enabled: booleanValue(meetingBookedEmail.enabled, defaults.notifications.meetingBookedEmail.enabled),
+        recipientEmail:
+          typeof meetingBookedEmail.recipientEmail === "string" &&
+          meetingBookedEmail.recipientEmail.includes("@")
+            ? meetingBookedEmail.recipientEmail
+            : ownerHotLeadEmail
+      }
+    },
     channels: { whatsapp, email },
     confidence: {
       autoSendMinimum: numberInRange(
@@ -304,6 +333,12 @@ export function settingsFromForm(input: z.infer<typeof aiAssistantFormSchema>): 
     enabled: input.enabled,
     mode: input.mode,
     ownerHotLeadEmail: input.ownerHotLeadEmail,
+    notifications: {
+      meetingBookedEmail: {
+        enabled: input.meetingBookedEmailEnabled,
+        recipientEmail: input.meetingBookedEmailRecipient
+      }
+    },
     channels: {
       whatsapp: { enabled: input.whatsappEnabled, autoReply: input.whatsappAutoReply },
       email: { enabled: input.emailEnabled, autoReply: input.emailAutoReply }
@@ -568,6 +603,98 @@ export async function sendHotLeadOwnerAlert(replyId: string) {
   }
 }
 
+export async function sendMeetingBookedOwnerAlert(bookingId: string) {
+  const booking = await prisma.meetingBooking.findUnique({
+    where: { id: bookingId },
+    include: { lead: true, slot: true, conversation: true }
+  });
+  if (!booking?.lead) return { skipped: true, reason: "booking_missing" };
+
+  const existing = await prisma.auditLog.findFirst({
+    where: {
+      action: "ai_assistant.meeting_booked_alert_sent",
+      entityType: "meeting_booking",
+      entityId: booking.id
+    }
+  });
+  if (existing) return { skipped: true, reason: "already_sent" };
+
+  const settings = await getAiAssistantSettings();
+  const notification = settings.notifications.meetingBookedEmail;
+  const to = notification.recipientEmail || settings.ownerHotLeadEmail;
+  if (!notification.enabled) {
+    await prisma.auditLog.create({
+      data: {
+        action: "ai_assistant.meeting_booked_alert_skipped",
+        entityType: "meeting_booking",
+        entityId: booking.id,
+        metadata: { leadId: booking.leadId, reason: "disabled" }
+      }
+    });
+    return { skipped: true, reason: "disabled" };
+  }
+
+  const account = await ensureDefaultSendingAccount();
+  const leadName =
+    booking.contactName ||
+    [booking.lead.firstName, booking.lead.lastName].filter(Boolean).join(" ") ||
+    booking.lead.email;
+  const subject = `Meeting booked: ${booking.company || booking.lead.company || leadName}`;
+  const platformUrl = `${appBaseUrl()}/pipeline`;
+  const meetingTime = booking.slot
+    ? formatOwnerMeetingTime(booking.slot.startAt, booking.slot.timezone)
+    : booking.preferredTimeText || "Customer preferred time needs confirmation";
+  const text = [
+    "A meeting was booked by the AI assistant.",
+    "",
+    `Lead: ${leadName}`,
+    `Company: ${booking.company || booking.lead.company || "Unknown"}`,
+    `Email: ${booking.email || booking.lead.email}`,
+    `Phone: ${booking.phoneE164 || booking.lead.phoneE164 || "Unknown"}`,
+    `Service needed: ${booking.serviceNeeded || booking.lead.serviceNeeded || "Not specified"}`,
+    `Meeting time: ${meetingTime}`,
+    `Status: ${booking.status}`,
+    "",
+    `Open in platform: ${platformUrl}`
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  try {
+    const result = await sendDirectEmail({ account, to, subject, text });
+    await prisma.auditLog.create({
+      data: {
+        action: "ai_assistant.meeting_booked_alert_sent",
+        entityType: "meeting_booking",
+        entityId: booking.id,
+        metadata: {
+          leadId: booking.leadId,
+          slotId: booking.slotId,
+          to,
+          providerMessageId: result.providerMessageId,
+          dryRun: result.dryRun
+        }
+      }
+    });
+    return { sent: true, dryRun: result.dryRun };
+  } catch (error) {
+    await prisma.auditLog.create({
+      data: {
+        action: "ai_assistant.meeting_booked_alert_failed",
+        entityType: "meeting_booking",
+        entityId: booking.id,
+        metadata: {
+          leadId: booking.leadId,
+          slotId: booking.slotId,
+          to,
+          error: error instanceof Error ? error.message : "Unknown error"
+        }
+      }
+    });
+    return { failed: true };
+  }
+}
+
 export async function logAiAssistantDecision({
   replyId,
   draftId,
@@ -613,6 +740,10 @@ export async function recentAiAssistantActivity(limit = 20) {
           "ai_assistant.queued_decision",
           "ai_assistant.hot_lead_alert_sent",
           "ai_assistant.hot_lead_alert_failed",
+          "ai_assistant.meeting_booked_alert_sent",
+          "ai_assistant.meeting_booked_alert_failed",
+          "ai_assistant.meeting_booked_alert_skipped",
+          "meeting_slots.availability_generated",
           "email_reply.imap_poll_failed",
           "email_reply.imap_poll_processed"
         ]
@@ -700,6 +831,17 @@ function normalizeTiming(timing: AiAssistantSettings["timing"]) {
     ...timing,
     maxReplyDelaySeconds: Math.max(timing.minReplyDelaySeconds, timing.maxReplyDelaySeconds)
   };
+}
+
+function formatOwnerMeetingTime(startAt: Date, timezone: string) {
+  return `${new Intl.DateTimeFormat("en", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: timezone
+  }).format(startAt)} ${timezone}`;
 }
 
 function randomDelaySeconds(settings: AiAssistantSettings) {

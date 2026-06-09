@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import {
   createMeetingSlot,
+  generateDefaultMeetingAvailabilityAction,
   testAiAssistantReply,
   updateAiAssistantSettings,
   updateMeetingSlotStatus
@@ -291,6 +292,24 @@ export default async function AiAssistantPage() {
                     defaultValue={savedSettings.ownerHotLeadEmail}
                   />
                 </label>
+                <label className="field checkbox-field">
+                  <input
+                    name="meetingBookedEmailEnabled"
+                    type="checkbox"
+                    defaultChecked={savedSettings.notifications.meetingBookedEmail.enabled}
+                  />
+                  <span>Email me when meeting is booked</span>
+                  <small>AI sends an owner email after it books an approved slot.</small>
+                </label>
+                <label className="field">
+                  <span>Meeting booked alert email</span>
+                  <input
+                    className="input"
+                    name="meetingBookedEmailRecipient"
+                    type="email"
+                    defaultValue={savedSettings.notifications.meetingBookedEmail.recipientEmail}
+                  />
+                </label>
               </div>
 
               <PromptFields settings={savedSettings} />
@@ -501,6 +520,17 @@ function MeetingCalendarPanel({
         <CalendarDays size={18} aria-hidden="true" />
       </div>
       <div className="panel-body stack">
+        <form action={generateDefaultMeetingAvailabilityAction} className="empty-state stack">
+          <strong>Weekly availability</strong>
+          <span>
+            Create 30-minute slots for the next 8 weeks: Sunday to Thursday, 10:00 AM to 6:00 PM; Saturday,
+            12:30 PM to 8:00 PM; Friday off.
+          </span>
+          <button className="secondary-button" type="submit">
+            <CalendarDays size={16} aria-hidden="true" /> Apply availability
+          </button>
+        </form>
+
         <form action={createMeetingSlot} className="stack">
           <div className="form-grid">
             <label className="field">

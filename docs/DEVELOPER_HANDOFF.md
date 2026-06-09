@@ -268,10 +268,12 @@ Default behavior:
 - Natural reply delay is configurable in `/ai-assistant`.
 - Daily AI auto-reply cap is `100`.
 - Owner hot-lead alerts go to `moh@virtuprose.com`.
+- Meeting-booked owner alerts are enabled by default and use the configurable recipient in `/ai-assistant`.
 - Replies should be 1-3 short sentences by default, ask one clear question, and avoid long explanations unless the customer asks.
 - AI must detect English vs Arabic and reply in the same language. Arabic should be natural, professional, and GCC-friendly.
 - AI must ask for contact details gradually: name, phone, email, company, service/product needed, and preferred meeting time.
 - AI must not invent meeting availability. It can offer only `meeting_slots.status = AVAILABLE`; otherwise it asks for the customer's preferred time and says the team will confirm.
+- Default owner availability can be generated in `/ai-assistant`: Sunday-Thursday 10:00 AM-6:00 PM, Saturday 12:30 PM-8:00 PM, Friday off, Asia/Kuwait timezone, 30-minute slots.
 
 Auto-send is blocked when any of these are true:
 
@@ -307,6 +309,14 @@ Owner alert email behavior:
 - Deduped per inbound reply.
 - Logged as `ai_assistant.hot_lead_alert_sent` or `ai_assistant.hot_lead_alert_failed`.
 - Requires live SMTP settings. Production SMTP is configured, but the owner should confirm real inbox receipt.
+
+Meeting booked email behavior:
+
+- Triggered after a confirmed booking transaction succeeds.
+- Uses `settings.notifications.meetingBookedEmail`.
+- Deduped per meeting booking.
+- Logged as `ai_assistant.meeting_booked_alert_sent`, `ai_assistant.meeting_booked_alert_failed`, or `ai_assistant.meeting_booked_alert_skipped`.
+- Requires stored `meeting_slots`; AI must not create or offer unsaved availability.
 
 Email reply receiving:
 

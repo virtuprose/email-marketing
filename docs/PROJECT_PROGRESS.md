@@ -95,8 +95,9 @@ Pending/verify on VPS:
 - AI can classify replies, create short human-style drafts, queue Auto Safe replies when all safety rules pass, and respond in English or Arabic based on customer language.
 - AI stores inbound and outbound conversation history for future context.
 - AI can identify missing contact details, update sales stage, and create meeting requests.
-- Owner can add manual meeting slots and book available slots from inbox pages.
+- Owner can generate the default weekly meeting availability in `/ai-assistant` or add manual meeting slots, then book available slots from inbox pages.
 - Hot, pricing, and meeting replies hand off to the owner and send alert emails to `moh@virtuprose.com`.
+- Confirmed AI meeting bookings send a configurable owner email alert when the notification option is enabled.
 - SMTP and IMAP authentication are verified for `info@virtuprose.com`.
 - Existing UI and workflow pages are available.
 
@@ -113,11 +114,13 @@ Implemented:
 - Hot, pricing, and meeting conversations notify the owner while still allowing a safe short reply when the draft is eligible.
 - AI uses unified conversation history instead of only recent raw channel records.
 - AI can offer only stored available meeting slots and otherwise asks for the customer's preferred time.
+- Default availability generation creates 30-minute Asia/Kuwait slots for Sunday-Thursday 10:00 AM-6:00 PM, Saturday 12:30 PM-8:00 PM, and Friday off.
 
 Pending:
 
 - Test one live inbound WhatsApp reply and confirm AI classification plus the send/block decision.
 - Confirm owner hot-lead alert delivery in the `moh@virtuprose.com` inbox.
+- Confirm one meeting-booked alert email reaches the configured owner inbox.
 
 ### WhatsApp Inbound Replies
 

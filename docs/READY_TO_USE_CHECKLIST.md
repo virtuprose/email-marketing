@@ -64,11 +64,13 @@ Current status on VPS:
   - **Test Mode**: AI classifies and drafts but never sends.
   - **Paused**: AI stores replies without drafting or sending.
 - Confirm the owner alert email is `moh@virtuprose.com`.
+- Confirm **Email me when meeting is booked** is enabled and points to the owner inbox.
 - Confirm prompts and the knowledge base contain only approved services, portfolio links, pricing rules, FAQs, and forbidden claims.
 - Confirm auto-reply safety rules are visible: confidence threshold, reply delay, daily cap, WhatsApp 24-hour window, and handoff intents.
 - Test AI with a safe sample reply and a pricing/meeting sample reply.
 - Safe sample should draft or auto-send only if Auto Safe rules pass.
 - Pricing/meeting sample should hand off to the owner and not invent prices.
+- In `/ai-assistant`, apply the default weekly availability or add manual slots before testing meeting booking.
 - Paste replies into `/inbox` while inbound routing is not connected.
 - If using a provider inbound parser, set `INBOUND_WEBHOOK_SECRET`.
 - Connect provider inbound parser to `/api/inbound/replies`.
