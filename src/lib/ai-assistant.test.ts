@@ -1,6 +1,6 @@
 import { AiReplyDraftStatus, MessageChannel, ReplyIntent } from "@prisma/client";
 import { describe, expect, it } from "vitest";
-import { decideAiReplyAutomation, defaultAiAssistantSettings } from "./ai-assistant";
+import { aiAssistantFormSchema, decideAiReplyAutomation, defaultAiAssistantSettings } from "./ai-assistant";
 
 const baseReply = {
   id: "reply-1",
@@ -158,5 +158,58 @@ describe("AI Assistant auto-reply decisions", () => {
     expect(decision.shouldAutoSend).toBe(false);
     expect(decision.reasons).toContain("Draft Only mode is on.");
     expect(decision.reasons).toContain("Daily AI reply limit has been reached.");
+  });
+});
+
+describe("AI Assistant settings validation", () => {
+  const validSettingsInput = {
+    enabled: true,
+    mode: "AUTO_SAFE",
+    ownerHotLeadEmail: "moh@virtuprose.com",
+    meetingBookedEmailEnabled: true,
+    meetingBookedEmailRecipient: "moh@virtuprose.com",
+    whatsappEnabled: true,
+    whatsappAutoReply: true,
+    emailEnabled: true,
+    emailAutoReply: true,
+    autoSendMinimum: "70",
+    draftMinimum: "60",
+    minReplyDelaySeconds: "0",
+    maxReplyDelaySeconds: "5",
+    dailyAutoReplyCap: "100",
+    businessRules: defaultAiAssistantSettings.prompts.businessRules,
+    classifier: defaultAiAssistantSettings.prompts.classifier,
+    whatsappReply: defaultAiAssistantSettings.prompts.whatsappReply,
+    emailReply: defaultAiAssistantSettings.prompts.emailReply,
+    safety: defaultAiAssistantSettings.prompts.safety,
+    companyIntro: defaultAiAssistantSettings.knowledgeBase.companyIntro,
+    services: defaultAiAssistantSettings.knowledgeBase.services.join("\n"),
+    portfolioLinks: defaultAiAssistantSettings.knowledgeBase.portfolioLinks.join("\n"),
+    pricingRules: defaultAiAssistantSettings.knowledgeBase.pricingRules.join("\n"),
+    faqs: defaultAiAssistantSettings.knowledgeBase.faqs.join("\n"),
+    forbiddenClaims: defaultAiAssistantSettings.knowledgeBase.forbiddenClaims.join("\n")
+  };
+
+  it("allows a blank meeting-booked email when that notification is off", () => {
+    const result = aiAssistantFormSchema.safeParse({
+      ...validSettingsInput,
+      meetingBookedEmailEnabled: false,
+      meetingBookedEmailRecipient: ""
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("requires a meeting-booked email when that notification is on", () => {
+    const result = aiAssistantFormSchema.safeParse({
+      ...validSettingsInput,
+      meetingBookedEmailEnabled: true,
+      meetingBookedEmailRecipient: ""
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.flatten().fieldErrors.meetingBookedEmailRecipient?.[0]).toContain(
+      "Enter an email address"
+    );
   });
 });

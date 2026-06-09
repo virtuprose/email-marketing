@@ -55,6 +55,15 @@ Current status on VPS:
 - Suppression list is checked before every queued send.
 - Lead source, country, and legal basis are stored before campaign approval.
 
+## Lead Import
+
+- Open `/leads/import`.
+- Test CSV upload with the example file.
+- Test **Paste from Excel** with a header row and at least one lead row.
+- Click **Check rows** and confirm accepted, flagged, duplicate, invalid, and suppressed counters make sense.
+- Click **Import accepted rows** only after the preview looks correct.
+- Review the import result page and keep rollback available for bad imports.
+
 ## AI Assistant And Replies
 
 - OpenAI is configured; test one inbound reply before trusting hands-off AI replies.
@@ -66,6 +75,7 @@ Current status on VPS:
 - Confirm the owner alert email is `moh@virtuprose.com`.
 - Confirm **Email me when meeting is booked** is enabled and points to the owner inbox.
 - Confirm prompts and the knowledge base contain only approved services, portfolio links, pricing rules, FAQs, and forbidden claims.
+- Try one intentionally invalid prompt or email value and confirm `/ai-assistant` shows inline errors without an error page.
 - Confirm auto-reply safety rules are visible: confidence threshold, reply delay, daily cap, WhatsApp 24-hour window, and handoff intents.
 - Test AI with a safe sample reply and a pricing/meeting sample reply.
 - Safe sample should draft or auto-send only if Auto Safe rules pass.

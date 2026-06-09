@@ -9,6 +9,7 @@ import {
   normalizeEmail,
   normalizePhoneE164
 } from "./imports";
+import { defaultImportMappingForRows, parseLeadImportText } from "./import-processing";
 
 describe("lead import helpers", () => {
   it("normalizes and validates email addresses", () => {
@@ -30,6 +31,20 @@ describe("lead import helpers", () => {
     expect(mapping.company).toBe("Company Name");
     expect(mapping.source).toBe("Lead Source");
     expect(mapping.legalBasis).toBe("Legal Basis");
+  });
+
+  it("parses Excel-style tab pasted rows with a header row", () => {
+    const rows = parseLeadImportText(
+      "email\tfirst_name\tcompany\tcountry\tsource\tpermission_reason\nfounder@example.com\tSara\tExample Co\tKuwait\tLinkedIn\tBusiness outreach"
+    );
+    const mapping = defaultImportMappingForRows(rows);
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.email).toBe("founder@example.com");
+    expect(rows[0]?.company).toBe("Example Co");
+    expect(mapping.email).toBe("email");
+    expect(mapping.company).toBe("company");
+    expect(mapping.source).toBe("source");
   });
 
   it("flags rows missing compliance data", () => {

@@ -18,7 +18,7 @@ Virtuprose Sales Assistant is an internal single-owner platform for:
 ## Completed
 
 - Next.js dashboard with simplified owner-friendly UI.
-- Lead import, CSV guidance, and downloadable example CSV.
+- Lead import with CSV upload, Excel/Google Sheets paste, mapping, validation preview, and downloadable example CSV.
 - Lead database with email and WhatsApp fields.
 - Offer/service library.
 - Email campaign builder and queue foundation.
@@ -26,6 +26,7 @@ Virtuprose Sales Assistant is an internal single-owner platform for:
 - WhatsApp template storage, approval submission, status sync, test-send flow, and campaign flow.
 - WhatsApp safety gates for consent, opt-out, STOP language, send caps, and owner approval.
 - AI Assistant page with reply modes, prompts, knowledge base, safety rules, test tool, and activity log.
+- AI Assistant settings now show inline validation errors and preserve edited prompt/knowledge-base text when a save fails.
 - Inbox/replies area with AI classification, draft, safe auto-reply decisioning, and owner handoff.
 - Short sales conversation behavior for inbound and outbound replies, including same-language English/Arabic response handling.
 - Persistent conversation memory through `conversations` and `conversation_messages`; WhatsApp history is tied to phone number.
@@ -100,6 +101,7 @@ Pending/verify on VPS:
 - Confirmed AI meeting bookings send a configurable owner email alert when the notification option is enabled.
 - SMTP and IMAP authentication are verified for `info@virtuprose.com`.
 - Existing UI and workflow pages are available.
+- `/api/imports/preview` checks pasted or uploaded lead rows before import without mutating the database.
 
 ## What Is Not Fully Ready Yet
 
@@ -108,6 +110,7 @@ Pending/verify on VPS:
 Implemented:
 
 - AI Assistant settings stored under `ai_assistant_settings`.
+- Prompt, knowledge-base, and notification setting validation is handled inline on `/ai-assistant` instead of crashing to an error page.
 - Default mode is **Auto Safe**.
 - Safe replies can auto-send only when confidence is high, no handoff/risk flags exist, the lead is not paused/suppressed, duplicate checks pass, caps are available, and the WhatsApp 24-hour service window is open when the channel is WhatsApp.
 - Complaint, unsubscribe, unclear, low-confidence, risky, or owner-taken-over conversations create drafts or owner review instead of auto-sending.

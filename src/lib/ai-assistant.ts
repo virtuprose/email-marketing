@@ -165,33 +165,46 @@ const stringArraySchema = z.preprocess((value) => {
   return [];
 }, z.array(z.string()));
 
-export const aiAssistantFormSchema = z.object({
-  enabled: z.boolean(),
-  mode: z.enum(aiAssistantModes),
-  ownerHotLeadEmail: z.string().email(),
-  meetingBookedEmailEnabled: z.boolean(),
-  meetingBookedEmailRecipient: z.string().email(),
-  whatsappEnabled: z.boolean(),
-  whatsappAutoReply: z.boolean(),
-  emailEnabled: z.boolean(),
-  emailAutoReply: z.boolean(),
-  autoSendMinimum: z.coerce.number().int().min(50).max(100),
-  draftMinimum: z.coerce.number().int().min(0).max(100),
-  minReplyDelaySeconds: z.coerce.number().int().min(0).max(3600),
-  maxReplyDelaySeconds: z.coerce.number().int().min(0).max(3600),
-  dailyAutoReplyCap: z.coerce.number().int().min(1).max(1000),
-  businessRules: z.string().min(20),
-  classifier: z.string().min(20),
-  whatsappReply: z.string().min(20),
-  emailReply: z.string().min(20),
-  safety: z.string().min(20),
-  companyIntro: z.string().min(10),
-  services: stringArraySchema,
-  portfolioLinks: stringArraySchema,
-  pricingRules: stringArraySchema,
-  faqs: stringArraySchema,
-  forbiddenClaims: stringArraySchema
-});
+export const aiAssistantFormSchema = z
+  .object({
+    enabled: z.boolean(),
+    mode: z.enum(aiAssistantModes),
+    ownerHotLeadEmail: z.string().trim().email(),
+    meetingBookedEmailEnabled: z.boolean(),
+    meetingBookedEmailRecipient: z.string().trim(),
+    whatsappEnabled: z.boolean(),
+    whatsappAutoReply: z.boolean(),
+    emailEnabled: z.boolean(),
+    emailAutoReply: z.boolean(),
+    autoSendMinimum: z.coerce.number().int().min(50).max(100),
+    draftMinimum: z.coerce.number().int().min(0).max(100),
+    minReplyDelaySeconds: z.coerce.number().int().min(0).max(3600),
+    maxReplyDelaySeconds: z.coerce.number().int().min(0).max(3600),
+    dailyAutoReplyCap: z.coerce.number().int().min(1).max(1000),
+    businessRules: z.string().min(20),
+    classifier: z.string().min(20),
+    whatsappReply: z.string().min(20),
+    emailReply: z.string().min(20),
+    safety: z.string().min(20),
+    companyIntro: z.string().min(10),
+    services: stringArraySchema,
+    portfolioLinks: stringArraySchema,
+    pricingRules: stringArraySchema,
+    faqs: stringArraySchema,
+    forbiddenClaims: stringArraySchema
+  })
+  .superRefine((value, ctx) => {
+    if (
+      value.meetingBookedEmailEnabled &&
+      !z.string().email().safeParse(value.meetingBookedEmailRecipient).success
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["meetingBookedEmailRecipient"],
+        message: "Enter an email address or turn this notification off."
+      });
+    }
+  });
 
 export function parseAiAssistantSettings(value: unknown): AiAssistantSettings {
   if (!value || typeof value !== "object" || Array.isArray(value)) return defaultAiAssistantSettings;

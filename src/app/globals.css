@@ -537,6 +537,35 @@ tr:last-child td {
   font-weight: 760;
 }
 
+.spreadsheet-paste {
+  min-height: 210px;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  line-height: 1.45;
+  white-space: pre;
+}
+
+.spreadsheet-preview table {
+  min-width: 980px;
+}
+
+.spreadsheet-preview th,
+.spreadsheet-preview td {
+  max-width: 240px;
+  overflow-wrap: anywhere;
+}
+
+.import-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 .field {
   display: grid;
   gap: 6px;
@@ -551,6 +580,10 @@ tr:last-child td {
 .field small {
   color: var(--text-muted);
   line-height: 1.4;
+}
+
+.field-error {
+  color: var(--state-danger) !important;
 }
 
 .checkbox-field {
@@ -1294,7 +1327,8 @@ tr:last-child td {
   }
 
   .choice-grid,
-  .csv-guide-grid {
+  .csv-guide-grid,
+  .import-summary-grid {
     grid-template-columns: 1fr;
   }
 

@@ -72,11 +72,31 @@ Important boundaries:
 - `src/lib/replies.ts` owns inbound reply ingestion, AI classification/drafting, suppression detection, AI auto-reply execution, and deal creation.
 - `src/lib/conversations.ts` owns language detection, contact extraction, sales-stage scoring, conversation records, conversation messages, and manual meeting-slot helpers.
 - `src/lib/ai-assistant.ts` owns AI settings defaults, safe auto-reply decisioning, delayed queue scheduling, owner hot-lead alerts, and AI activity logs.
+- `src/lib/import-processing.ts` owns shared lead import parsing, preview classification, duplicate checks, suppression checks, and counters for both CSV upload and Excel paste.
 - `src/lib/email-inbox.ts` owns IMAP polling for inbound email replies.
 - `src/lib/queue.ts` owns BullMQ queue factories, including `ai-reply-sending`.
 - `src/worker/index.ts` processes queued email sends, WhatsApp sends, AI replies, and optional IMAP polling.
 - `src/app/actions.ts` contains dashboard server actions for templates, campaigns, settings, sends, and inbox workflows.
 - `src/app/api/webhooks/meta/whatsapp/route.ts` handles Meta webhook verification and inbound/status callbacks.
+- `src/app/api/imports/preview/route.ts` validates pasted or uploaded lead rows without creating import batches or leads.
+
+## Lead Import Runbook
+
+Primary page:
+
+```text
+/leads/import
+```
+
+Behavior:
+
+- Owners can upload a CSV or paste rows copied from Excel/Google Sheets.
+- Paste mode requires a header row.
+- The app auto-detects tab-delimited spreadsheet paste and falls back to CSV-style parsing.
+- Mapping is still required for email, and optional fields map to phone, name, company, country, source, legal basis, WhatsApp opt-in, consent source, and tags.
+- **Check rows** calls `/api/imports/preview` and returns accepted, flagged, invalid, duplicate, and suppressed rows without changing the database.
+- **Import accepted rows** uses `/api/imports` and creates only valid/flagged leads; invalid, duplicate, and suppressed rows are stored in import results but skipped as lead records.
+- Existing import result review and rollback behavior remain unchanged.
 
 ## Local Setup
 
@@ -269,6 +289,7 @@ Default behavior:
 - Daily AI auto-reply cap is `100`.
 - Owner hot-lead alerts go to `moh@virtuprose.com`.
 - Meeting-booked owner alerts are enabled by default and use the configurable recipient in `/ai-assistant`.
+- Prompt, knowledge-base, and notification setting saves return inline field errors and preserve the submitted text when validation fails.
 - Replies should be 1-3 short sentences by default, ask one clear question, and avoid long explanations unless the customer asks.
 - AI must detect English vs Arabic and reply in the same language. Arabic should be natural, professional, and GCC-friendly.
 - AI must ask for contact details gradually: name, phone, email, company, service/product needed, and preferred meeting time.

@@ -91,7 +91,7 @@ curl http://localhost:3000/api/health
 ## Implemented Scope
 
 - Lead database
-- CSV import with mapping, validation, duplicate checks, suppression checks, and missing compliance data flags
+- Lead import from CSV upload or Excel/Google Sheets paste, with mapping, validation preview, duplicate checks, suppression checks, and missing compliance data flags
 - Offer/product library
 - Suppression list
 - Lead activity timeline
@@ -128,6 +128,7 @@ Do not disable dry-run for production until SPF, DKIM, DMARC, mailbox warmup, an
 ## AI Assistant And Hot Lead Scope
 
 - `/ai-assistant` control center for reply mode, prompts, knowledge base, safety rules, activity, and test classification.
+- AI Assistant settings save inline validation errors for prompts, knowledge base, and notification emails instead of sending the owner to a generic error page.
 - Reply modes: Auto Safe, Draft Only, Test Mode, and Paused.
 - Auto Safe replies only send when confidence, safety, channel, service-window, daily-cap, duplicate, and owner-takeover checks pass.
 - Default reply style is short, human, sales-focused, and same-language. English and Arabic are supported; Arabic should read naturally for GCC and international customers.
@@ -162,7 +163,7 @@ Body: {
 ## Ready-To-Use Internal Workflow
 
 1. Keep dry-run on while testing.
-2. Import CSV leads with source, country, and legal-basis fields.
+2. Import leads with source, country, and legal-basis fields by uploading CSV or pasting rows copied from Excel/Google Sheets.
 3. Create or select the Virtuprose offer you want to sell.
 4. Generate a campaign, review the copy, fix blockers, and approve it.
 5. Schedule the campaign through the sending account.

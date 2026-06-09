@@ -5,7 +5,6 @@ import {
   Clock,
   Mail,
   MessageCircle,
-  Save,
   Send,
   ShieldCheck,
   Sparkles,
@@ -15,15 +14,15 @@ import {
   createMeetingSlot,
   generateDefaultMeetingAvailabilityAction,
   testAiAssistantReply,
-  updateAiAssistantSettings,
   updateMeetingSlotStatus
 } from "@/app/actions";
+import type { AiAssistantSettingsFormValues } from "@/app/actions";
+import { AiAssistantSettingsForm } from "@/components/ai-assistant-settings-form";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
 import {
   AI_ASSISTANT_LAST_TEST_KEY,
   AI_ASSISTANT_SETTINGS_KEY,
-  defaultAiAssistantSettings,
   getAiAssistantSettings,
   parseAiAssistantSettings,
   recentAiAssistantActivity
@@ -83,6 +82,33 @@ export default async function AiAssistantPage() {
     !imapReady ? "Email reply inbox is not connected yet." : null
   ].filter(Boolean) as string[];
   const lastTest = parseLastTest(lastTestSetting?.value);
+  const settingsFormValues: AiAssistantSettingsFormValues = {
+    enabled: savedSettings.enabled,
+    mode: savedSettings.mode,
+    ownerHotLeadEmail: savedSettings.ownerHotLeadEmail,
+    meetingBookedEmailEnabled: savedSettings.notifications.meetingBookedEmail.enabled,
+    meetingBookedEmailRecipient: savedSettings.notifications.meetingBookedEmail.recipientEmail,
+    whatsappEnabled: savedSettings.channels.whatsapp.enabled,
+    whatsappAutoReply: savedSettings.channels.whatsapp.autoReply,
+    emailEnabled: savedSettings.channels.email.enabled,
+    emailAutoReply: savedSettings.channels.email.autoReply,
+    autoSendMinimum: String(savedSettings.confidence.autoSendMinimum),
+    draftMinimum: String(savedSettings.confidence.draftMinimum),
+    minReplyDelaySeconds: String(savedSettings.timing.minReplyDelaySeconds),
+    maxReplyDelaySeconds: String(savedSettings.timing.maxReplyDelaySeconds),
+    dailyAutoReplyCap: String(savedSettings.timing.dailyAutoReplyCap),
+    businessRules: savedSettings.prompts.businessRules,
+    classifier: savedSettings.prompts.classifier,
+    whatsappReply: savedSettings.prompts.whatsappReply,
+    emailReply: savedSettings.prompts.emailReply,
+    safety: savedSettings.prompts.safety,
+    companyIntro: savedSettings.knowledgeBase.companyIntro,
+    services: savedSettings.knowledgeBase.services.join("\n"),
+    portfolioLinks: savedSettings.knowledgeBase.portfolioLinks.join("\n"),
+    pricingRules: savedSettings.knowledgeBase.pricingRules.join("\n"),
+    faqs: savedSettings.knowledgeBase.faqs.join("\n"),
+    forbiddenClaims: savedSettings.knowledgeBase.forbiddenClaims.join("\n")
+  };
 
   return (
     <>
@@ -175,150 +201,7 @@ export default async function AiAssistantPage() {
             />
           </div>
           <div className="panel-body">
-            <form action={updateAiAssistantSettings} className="stack">
-              <label className="field checkbox-field">
-                <input name="enabled" type="checkbox" defaultChecked={savedSettings.enabled} />
-                <span>AI Assistant is on</span>
-                <small>Turn this off to stop AI classification, drafts, and auto replies.</small>
-              </label>
-
-              <label className="field">
-                <span>Reply mode</span>
-                <select className="select" name="mode" defaultValue={savedSettings.mode}>
-                  <option value="AUTO_SAFE">Auto Safe</option>
-                  <option value="DRAFT_ONLY">Draft Only</option>
-                  <option value="TEST_MODE">Test Mode</option>
-                  <option value="PAUSED">Paused</option>
-                </select>
-              </label>
-
-              <div className="form-grid">
-                <label className="field checkbox-field">
-                  <input
-                    name="whatsappEnabled"
-                    type="checkbox"
-                    defaultChecked={savedSettings.channels.whatsapp.enabled}
-                  />
-                  <span>WhatsApp replies</span>
-                </label>
-                <label className="field checkbox-field">
-                  <input
-                    name="whatsappAutoReply"
-                    type="checkbox"
-                    defaultChecked={savedSettings.channels.whatsapp.autoReply}
-                  />
-                  <span>WhatsApp auto safe replies</span>
-                </label>
-                <label className="field checkbox-field">
-                  <input
-                    name="emailEnabled"
-                    type="checkbox"
-                    defaultChecked={savedSettings.channels.email.enabled}
-                  />
-                  <span>Email replies</span>
-                </label>
-                <label className="field checkbox-field">
-                  <input
-                    name="emailAutoReply"
-                    type="checkbox"
-                    defaultChecked={savedSettings.channels.email.autoReply}
-                  />
-                  <span>Email auto safe replies</span>
-                </label>
-              </div>
-
-              <div className="form-grid">
-                <label className="field">
-                  <span>Minimum confidence to auto-send</span>
-                  <input
-                    className="input"
-                    name="autoSendMinimum"
-                    type="number"
-                    min={50}
-                    max={100}
-                    defaultValue={savedSettings.confidence.autoSendMinimum}
-                  />
-                </label>
-                <label className="field">
-                  <span>Minimum confidence to draft</span>
-                  <input
-                    className="input"
-                    name="draftMinimum"
-                    type="number"
-                    min={0}
-                    max={100}
-                    defaultValue={savedSettings.confidence.draftMinimum}
-                  />
-                </label>
-                <label className="field">
-                  <span>Fastest reply delay</span>
-                  <input
-                    className="input"
-                    name="minReplyDelaySeconds"
-                    type="number"
-                    min={0}
-                    max={3600}
-                    defaultValue={savedSettings.timing.minReplyDelaySeconds}
-                  />
-                </label>
-                <label className="field">
-                  <span>Slowest reply delay</span>
-                  <input
-                    className="input"
-                    name="maxReplyDelaySeconds"
-                    type="number"
-                    min={0}
-                    max={3600}
-                    defaultValue={savedSettings.timing.maxReplyDelaySeconds}
-                  />
-                </label>
-                <label className="field">
-                  <span>Daily AI reply limit</span>
-                  <input
-                    className="input"
-                    name="dailyAutoReplyCap"
-                    type="number"
-                    min={1}
-                    max={1000}
-                    defaultValue={savedSettings.timing.dailyAutoReplyCap}
-                  />
-                </label>
-                <label className="field">
-                  <span>Hot lead alert email</span>
-                  <input
-                    className="input"
-                    name="ownerHotLeadEmail"
-                    type="email"
-                    defaultValue={savedSettings.ownerHotLeadEmail}
-                  />
-                </label>
-                <label className="field checkbox-field">
-                  <input
-                    name="meetingBookedEmailEnabled"
-                    type="checkbox"
-                    defaultChecked={savedSettings.notifications.meetingBookedEmail.enabled}
-                  />
-                  <span>Email me when meeting is booked</span>
-                  <small>AI sends an owner email after it books an approved slot.</small>
-                </label>
-                <label className="field">
-                  <span>Meeting booked alert email</span>
-                  <input
-                    className="input"
-                    name="meetingBookedEmailRecipient"
-                    type="email"
-                    defaultValue={savedSettings.notifications.meetingBookedEmail.recipientEmail}
-                  />
-                </label>
-              </div>
-
-              <PromptFields settings={savedSettings} />
-              <KnowledgeFields settings={savedSettings} />
-
-              <button className="button" type="submit">
-                <Save size={16} aria-hidden="true" /> Save AI Assistant
-              </button>
-            </form>
+            <AiAssistantSettingsForm initialValues={settingsFormValues} />
           </div>
         </section>
 
@@ -407,75 +290,6 @@ async function getCounts() {
     })
   ]);
   return { replies, drafts, sentDrafts, needsOwner };
-}
-
-function PromptFields({ settings }: { settings: typeof defaultAiAssistantSettings }) {
-  return (
-    <details className="advanced-settings">
-      <summary className="panel-summary">
-        <div>
-          <h3>Prompts</h3>
-          <p className="muted">Edit only when you want to change how AI thinks and replies.</p>
-        </div>
-      </summary>
-      <div className="stack" style={{ marginTop: 12 }}>
-        <TextAreaField
-          name="businessRules"
-          label="Business rules prompt"
-          value={settings.prompts.businessRules}
-        />
-        <TextAreaField
-          name="classifier"
-          label="Reply classification prompt"
-          value={settings.prompts.classifier}
-        />
-        <TextAreaField
-          name="whatsappReply"
-          label="WhatsApp reply prompt"
-          value={settings.prompts.whatsappReply}
-        />
-        <TextAreaField name="emailReply" label="Email reply prompt" value={settings.prompts.emailReply} />
-        <TextAreaField name="safety" label="Safety rules prompt" value={settings.prompts.safety} />
-      </div>
-    </details>
-  );
-}
-
-function KnowledgeFields({ settings }: { settings: typeof defaultAiAssistantSettings }) {
-  return (
-    <details className="advanced-settings">
-      <summary className="panel-summary">
-        <div>
-          <h3>Knowledge base</h3>
-          <p className="muted">Approved facts AI can use. One item per line for lists.</p>
-        </div>
-      </summary>
-      <div className="stack" style={{ marginTop: 12 }}>
-        <TextAreaField
-          name="companyIntro"
-          label="Company intro"
-          value={settings.knowledgeBase.companyIntro}
-        />
-        <TextAreaField name="services" label="Services" value={settings.knowledgeBase.services.join("\n")} />
-        <TextAreaField
-          name="portfolioLinks"
-          label="Approved portfolio links"
-          value={settings.knowledgeBase.portfolioLinks.join("\n")}
-        />
-        <TextAreaField
-          name="pricingRules"
-          label="Pricing rules"
-          value={settings.knowledgeBase.pricingRules.join("\n")}
-        />
-        <TextAreaField name="faqs" label="FAQs" value={settings.knowledgeBase.faqs.join("\n")} />
-        <TextAreaField
-          name="forbiddenClaims"
-          label="Things AI must never claim"
-          value={settings.knowledgeBase.forbiddenClaims.join("\n")}
-        />
-      </div>
-    </details>
-  );
 }
 
 type MeetingSlotItem = {
@@ -620,15 +434,6 @@ function MeetingCalendarPanel({
         </div>
       </div>
     </section>
-  );
-}
-
-function TextAreaField({ name, label, value }: { name: string; label: string; value: string }) {
-  return (
-    <label className="field">
-      <span>{label}</span>
-      <textarea className="textarea" name={name} defaultValue={value} rows={4} />
-    </label>
   );
 }
 

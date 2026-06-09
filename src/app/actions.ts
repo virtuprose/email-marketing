@@ -214,6 +214,42 @@ const blockedLeadStatuses: LeadStatus[] = [
   LeadStatus.DO_NOT_CONTACT
 ];
 
+export type AiAssistantSettingsFormValues = {
+  enabled: boolean;
+  mode: string;
+  ownerHotLeadEmail: string;
+  meetingBookedEmailEnabled: boolean;
+  meetingBookedEmailRecipient: string;
+  whatsappEnabled: boolean;
+  whatsappAutoReply: boolean;
+  emailEnabled: boolean;
+  emailAutoReply: boolean;
+  autoSendMinimum: string;
+  draftMinimum: string;
+  minReplyDelaySeconds: string;
+  maxReplyDelaySeconds: string;
+  dailyAutoReplyCap: string;
+  businessRules: string;
+  classifier: string;
+  whatsappReply: string;
+  emailReply: string;
+  safety: string;
+  companyIntro: string;
+  services: string;
+  portfolioLinks: string;
+  pricingRules: string;
+  faqs: string;
+  forbiddenClaims: string;
+};
+
+export type AiAssistantSettingsActionState = {
+  status: "idle" | "success" | "error";
+  message: string;
+  fieldErrors: Record<string, string[]>;
+  values?: AiAssistantSettingsFormValues;
+  formKey: string;
+};
+
 function offerForGeneration(offer: OfferForGeneration) {
   return offer;
 }
@@ -654,35 +690,24 @@ export async function updateSendingControl(formData: FormData) {
   revalidatePath("/campaigns");
 }
 
-export async function updateAiAssistantSettings(formData: FormData) {
-  const parsed = aiAssistantFormSchema.parse({
-    enabled: formData.get("enabled") === "on",
-    mode: formData.get("mode"),
-    ownerHotLeadEmail: formData.get("ownerHotLeadEmail"),
-    meetingBookedEmailEnabled: formData.get("meetingBookedEmailEnabled") === "on",
-    meetingBookedEmailRecipient: formData.get("meetingBookedEmailRecipient"),
-    whatsappEnabled: formData.get("whatsappEnabled") === "on",
-    whatsappAutoReply: formData.get("whatsappAutoReply") === "on",
-    emailEnabled: formData.get("emailEnabled") === "on",
-    emailAutoReply: formData.get("emailAutoReply") === "on",
-    autoSendMinimum: formData.get("autoSendMinimum"),
-    draftMinimum: formData.get("draftMinimum"),
-    minReplyDelaySeconds: formData.get("minReplyDelaySeconds"),
-    maxReplyDelaySeconds: formData.get("maxReplyDelaySeconds"),
-    dailyAutoReplyCap: formData.get("dailyAutoReplyCap"),
-    businessRules: formData.get("businessRules"),
-    classifier: formData.get("classifier"),
-    whatsappReply: formData.get("whatsappReply"),
-    emailReply: formData.get("emailReply"),
-    safety: formData.get("safety"),
-    companyIntro: formData.get("companyIntro"),
-    services: formData.get("services"),
-    portfolioLinks: formData.get("portfolioLinks"),
-    pricingRules: formData.get("pricingRules"),
-    faqs: formData.get("faqs"),
-    forbiddenClaims: formData.get("forbiddenClaims")
-  });
-  const settings = settingsFromForm(parsed);
+export async function updateAiAssistantSettingsWithState(
+  _previousState: AiAssistantSettingsActionState,
+  formData: FormData
+): Promise<AiAssistantSettingsActionState> {
+  const values = aiAssistantValuesFromFormData(formData);
+  const parsed = aiAssistantFormSchema.safeParse(values);
+
+  if (!parsed.success) {
+    return {
+      status: "error",
+      message: "Fix the highlighted AI settings before saving.",
+      fieldErrors: parsed.error.flatten().fieldErrors,
+      values,
+      formKey: `error-${Date.now()}`
+    };
+  }
+
+  const settings = settingsFromForm(parsed.data);
 
   await saveAiAssistantSettings(settings);
   await prisma.auditLog.create({
@@ -702,6 +727,51 @@ export async function updateAiAssistantSettings(formData: FormData) {
   revalidatePath("/");
   revalidatePath("/settings");
   revalidatePath("/ai-assistant");
+
+  return {
+    status: "success",
+    message: "AI Assistant settings saved.",
+    fieldErrors: {},
+    values,
+    formKey: `success-${Date.now()}`
+  };
+}
+
+export async function updateAiAssistantSettings(formData: FormData) {
+  return updateAiAssistantSettingsWithState(
+    { status: "idle", message: "", fieldErrors: {}, formKey: "initial" },
+    formData
+  );
+}
+
+function aiAssistantValuesFromFormData(formData: FormData): AiAssistantSettingsFormValues {
+  return {
+    enabled: formData.get("enabled") === "on",
+    mode: String(formData.get("mode") ?? ""),
+    ownerHotLeadEmail: String(formData.get("ownerHotLeadEmail") ?? ""),
+    meetingBookedEmailEnabled: formData.get("meetingBookedEmailEnabled") === "on",
+    meetingBookedEmailRecipient: String(formData.get("meetingBookedEmailRecipient") ?? ""),
+    whatsappEnabled: formData.get("whatsappEnabled") === "on",
+    whatsappAutoReply: formData.get("whatsappAutoReply") === "on",
+    emailEnabled: formData.get("emailEnabled") === "on",
+    emailAutoReply: formData.get("emailAutoReply") === "on",
+    autoSendMinimum: String(formData.get("autoSendMinimum") ?? ""),
+    draftMinimum: String(formData.get("draftMinimum") ?? ""),
+    minReplyDelaySeconds: String(formData.get("minReplyDelaySeconds") ?? ""),
+    maxReplyDelaySeconds: String(formData.get("maxReplyDelaySeconds") ?? ""),
+    dailyAutoReplyCap: String(formData.get("dailyAutoReplyCap") ?? ""),
+    businessRules: String(formData.get("businessRules") ?? ""),
+    classifier: String(formData.get("classifier") ?? ""),
+    whatsappReply: String(formData.get("whatsappReply") ?? ""),
+    emailReply: String(formData.get("emailReply") ?? ""),
+    safety: String(formData.get("safety") ?? ""),
+    companyIntro: String(formData.get("companyIntro") ?? ""),
+    services: String(formData.get("services") ?? ""),
+    portfolioLinks: String(formData.get("portfolioLinks") ?? ""),
+    pricingRules: String(formData.get("pricingRules") ?? ""),
+    faqs: String(formData.get("faqs") ?? ""),
+    forbiddenClaims: String(formData.get("forbiddenClaims") ?? "")
+  };
 }
 
 export async function testAiAssistantReply(formData: FormData) {
