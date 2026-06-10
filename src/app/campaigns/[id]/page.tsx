@@ -12,6 +12,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
   approveCampaign,
+  confirmCampaignLeadCompliance,
   pauseCampaignSending,
   resumeCampaignSending,
   scheduleApprovedCampaign,
@@ -271,7 +272,12 @@ export default async function CampaignDetailPage({ params }: CampaignPageProps) 
             </div>
           </section>
 
-          <SafetyPanel blockers={blockers.length} warnings={warnings.length} reviews={campaign.reviews} />
+          <SafetyPanel
+            campaignId={campaign.id}
+            blockers={blockers.length}
+            warnings={warnings.length}
+            reviews={campaign.reviews}
+          />
           <PreviewPanel preview={preview} />
           <AiPanel generation={latestGeneration} campaign={campaign} />
 
@@ -426,10 +432,12 @@ function SendMonitor({
 }
 
 function SafetyPanel({
+  campaignId,
   blockers,
   warnings,
   reviews
 }: {
+  campaignId: string;
   blockers: number;
   warnings: number;
   reviews: CampaignDetail["reviews"];
@@ -454,12 +462,60 @@ function SafetyPanel({
             <div>
               <strong>{review.label}</strong>
               <p>{review.message}</p>
+              {review.key === "lead_compliance" && review.severity === CampaignReviewSeverity.BLOCK ? (
+                <ConfirmLeadComplianceForm campaignId={campaignId} />
+              ) : null}
             </div>
             <StatusBadge label={campaignReviewSeverityLabels[review.severity]} status={review.severity} />
           </div>
         ))}
       </div>
     </section>
+  );
+}
+
+function ConfirmLeadComplianceForm({ campaignId }: { campaignId: string }) {
+  return (
+    <form action={confirmCampaignLeadCompliance} className="compliance-override-form">
+      <input type="hidden" name="campaignId" value={campaignId} />
+      <div className="alert compliance-override-note">
+        Use this only when you can confirm these recipients came from a business lead source and the outreach
+        is relevant. Suppressed, unsubscribed, bounced, and do-not-contact leads still cannot be bypassed.
+      </div>
+      <div className="form-grid">
+        <label className="field">
+          <span>Lead source</span>
+          <select className="select" name="source" defaultValue="LinkedIn Sales Navigator" required>
+            <option value="LinkedIn Sales Navigator">LinkedIn Sales Navigator</option>
+            <option value="Leads411">Leads411</option>
+            <option value="Manual verified B2B list">Manual verified B2B list</option>
+          </select>
+        </label>
+        <label className="field">
+          <span>Country to apply where missing</span>
+          <input className="input" name="country" defaultValue="Kuwait" required />
+        </label>
+      </div>
+      <label className="field">
+        <span>Legal basis / permission reason</span>
+        <textarea
+          className="textarea compact-textarea"
+          name="legalBasis"
+          required
+          defaultValue="B2B legitimate interest for relevant business outreach. Source verified by owner before campaign approval."
+        />
+        <small>This fills only missing legal-basis fields for leads already selected in this campaign.</small>
+      </label>
+      <label className="field checkbox-field">
+        <input type="checkbox" name="confirmation" required />
+        <span>
+          I confirm these leads are appropriate for this outreach and were sourced for business use.
+        </span>
+      </label>
+      <button className="secondary-button" type="submit">
+        Confirm source and recheck
+      </button>
+    </form>
   );
 }
 

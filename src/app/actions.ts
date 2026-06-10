@@ -93,6 +93,14 @@ const campaignSchema = z.object({
   maxRecipients: z.coerce.number().int().min(1).max(5000)
 });
 
+const campaignLeadComplianceSchema = z.object({
+  campaignId: z.string().min(1),
+  source: z.string().min(2).max(120),
+  country: z.string().min(2).max(120),
+  legalBasis: z.string().min(10).max(500),
+  confirmation: z.string().optional()
+});
+
 const complianceSettingsSchema = z.object({
   senderName: z.string().min(1),
   senderEmail: z.string().email(),
@@ -1024,6 +1032,62 @@ export async function updateCampaignContent(formData: FormData) {
   });
 
   revalidatePath(`/campaigns/${campaignId}`);
+}
+
+export async function confirmCampaignLeadCompliance(formData: FormData) {
+  const parsed = campaignLeadComplianceSchema.parse({
+    campaignId: formData.get("campaignId"),
+    source: formData.get("source"),
+    country: formData.get("country"),
+    legalBasis: formData.get("legalBasis"),
+    confirmation: formData.get("confirmation")
+  });
+  if (parsed.confirmation !== "on") {
+    revalidatePath(`/campaigns/${parsed.campaignId}`);
+    return;
+  }
+
+  await prisma.$transaction(async (tx) => {
+    const campaign = await tx.campaign.findUnique({
+      where: { id: parsed.campaignId },
+      include: { recipients: { include: { lead: true } } }
+    });
+    if (!campaign) throw new Error("Campaign not found.");
+
+    const leadsMissingCompliance = campaign.recipients
+      .map((recipient) => recipient.lead)
+      .filter((lead) => !lead.country || !lead.source || !lead.legalBasis);
+
+    for (const lead of leadsMissingCompliance) {
+      await tx.lead.update({
+        where: { id: lead.id },
+        data: {
+          country: lead.country || parsed.country,
+          source: lead.source || parsed.source,
+          legalBasis: lead.legalBasis || parsed.legalBasis
+        }
+      });
+    }
+
+    await replaceCampaignReview(parsed.campaignId, tx);
+
+    await tx.auditLog.create({
+      data: {
+        action: "campaign.lead_compliance_confirmed",
+        entityType: "campaign",
+        entityId: parsed.campaignId,
+        metadata: {
+          updatedLeads: leadsMissingCompliance.length,
+          source: parsed.source,
+          country: parsed.country,
+          legalBasis: parsed.legalBasis
+        }
+      }
+    });
+  });
+
+  revalidatePath("/campaigns");
+  revalidatePath(`/campaigns/${parsed.campaignId}`);
 }
 
 export async function approveCampaign(formData: FormData) {

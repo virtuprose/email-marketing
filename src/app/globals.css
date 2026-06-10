@@ -945,6 +945,24 @@ tr:last-child td {
   line-height: 1.45;
 }
 
+.compliance-override-form {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: #fbfaf7;
+}
+
+.compliance-override-note {
+  margin: 0;
+}
+
+.compliance-override-form .secondary-button {
+  justify-self: start;
+}
+
 .embedded-table {
   border-left: 0;
   border-right: 0;
