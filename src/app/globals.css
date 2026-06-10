@@ -963,6 +963,16 @@ tr:last-child td {
   justify-self: start;
 }
 
+.campaign-timing-editor .alert {
+  margin: 0;
+}
+
+.campaign-step-timing {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
 .embedded-table {
   border-left: 0;
   border-right: 0;
@@ -1494,6 +1504,7 @@ tr:last-child td {
 
   .choice-grid,
   .csv-guide-grid,
+  .campaign-step-timing,
   .import-summary-grid {
     grid-template-columns: 1fr;
   }

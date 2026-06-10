@@ -101,6 +101,12 @@ const campaignLeadComplianceSchema = z.object({
   confirmation: z.string().optional()
 });
 
+const campaignTimingSchema = z.object({
+  campaignId: z.string().min(1),
+  startAt: z.string().min(1),
+  spacingSeconds: z.coerce.number().int().min(5).max(3600)
+});
+
 const complianceSettingsSchema = z.object({
   senderName: z.string().min(1),
   senderEmail: z.string().email(),
@@ -280,6 +286,16 @@ function parseManualSlotDate(value: string, timezone: string) {
   const date = new Date(`${trimmed}${trimmed.includes(":") ? ":00" : "T00:00:00"}${offset}`);
   if (Number.isNaN(date.getTime())) {
     throw new Error("Enter a valid meeting slot date and time.");
+  }
+  return date;
+}
+
+function parseKuwaitDateTimeLocal(value: string) {
+  const trimmed = value.trim();
+  if (/[zZ]$|[+-]\d{2}:\d{2}$/.test(trimmed)) return new Date(trimmed);
+  const date = new Date(`${trimmed.length === 16 ? `${trimmed}:00` : trimmed}+03:00`);
+  if (Number.isNaN(date.getTime())) {
+    throw new Error("Enter a valid campaign timing date and time.");
   }
   return date;
 }
@@ -1117,6 +1133,104 @@ export async function approveCampaign(formData: FormData) {
 
   revalidatePath("/campaigns");
   revalidatePath(`/campaigns/${campaignId}`);
+}
+
+export async function rescheduleCampaignQueuedEmails(formData: FormData) {
+  const parsed = campaignTimingSchema.parse({
+    campaignId: formData.get("campaignId"),
+    startAt: formData.get("startAt"),
+    spacingSeconds: formData.get("spacingSeconds")
+  });
+  const startAt = parseKuwaitDateTimeLocal(parsed.startAt);
+  const stepIds = formData.getAll("stepId").map(String);
+  const stepDelayDays = formData.getAll("stepDelayDays").map((value) => Number(value));
+  const delayByStepId = new Map<string, number>();
+  for (const [index, stepId] of stepIds.entries()) {
+    const delayDays = Number.isFinite(stepDelayDays[index])
+      ? Math.max(0, Math.min(30, Math.round(stepDelayDays[index])))
+      : 0;
+    delayByStepId.set(stepId, delayDays);
+  }
+
+  const queue = emailQueue();
+
+  const queuedMessages = await prisma.$transaction(async (tx) => {
+    const campaign = await tx.campaign.findUnique({
+      where: { id: parsed.campaignId },
+      include: {
+        steps: { orderBy: { stepOrder: "asc" } },
+        recipients: { orderBy: { createdAt: "asc" } },
+        sendJobs: {
+          where: { status: { in: [SendJobStatus.QUEUED, SendJobStatus.RUNNING, SendJobStatus.PAUSED] } },
+          include: {
+            messages: {
+              where: { status: EmailMessageStatus.QUEUED },
+              include: { campaignRecipient: true, campaignStep: true }
+            }
+          },
+          orderBy: { createdAt: "desc" }
+        }
+      }
+    });
+    if (!campaign) throw new Error("Campaign not found.");
+    const activeJob = campaign.sendJobs[0];
+    if (!activeJob) throw new Error("No active send job found for this campaign.");
+
+    for (const step of campaign.steps) {
+      await tx.campaignStep.update({
+        where: { id: step.id },
+        data: { delayDays: delayByStepId.get(step.id) ?? step.delayDays }
+      });
+    }
+
+    const recipientOrder = new Map(campaign.recipients.map((recipient, index) => [recipient.id, index]));
+    const updates: Array<{ id: string; queuedAt: Date }> = [];
+
+    for (const message of activeJob.messages) {
+      const recipientIndex = recipientOrder.get(message.campaignRecipientId) ?? 0;
+      const delayDays = delayByStepId.get(message.campaignStepId) ?? message.campaignStep.delayDays ?? 0;
+      const queuedAt = new Date(
+        startAt.getTime() + delayDays * 24 * 60 * 60 * 1000 + recipientIndex * parsed.spacingSeconds * 1000
+      );
+      updates.push({ id: message.id, queuedAt });
+    }
+
+    for (const update of updates) {
+      await tx.emailMessage.update({
+        where: { id: update.id },
+        data: { queuedAt: update.queuedAt, error: null }
+      });
+    }
+
+    await tx.auditLog.create({
+      data: {
+        action: "campaign.queued_timing_updated",
+        entityType: "campaign",
+        entityId: parsed.campaignId,
+        metadata: {
+          sendJobId: activeJob.id,
+          updatedMessages: updates.length,
+          startAt: startAt.toISOString(),
+          spacingSeconds: parsed.spacingSeconds,
+          stepDelays: Object.fromEntries(delayByStepId)
+        }
+      }
+    });
+
+    return updates;
+  });
+
+  for (const message of queuedMessages) {
+    await queue.add(
+      "email.send",
+      { messageId: message.id },
+      { delay: Math.max(0, message.queuedAt.getTime() - Date.now()) }
+    );
+  }
+  await queue.close();
+
+  revalidatePath("/campaigns");
+  revalidatePath(`/campaigns/${parsed.campaignId}`);
 }
 
 export async function createManualInboundReply(formData: FormData) {

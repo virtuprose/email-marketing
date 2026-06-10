@@ -14,6 +14,7 @@ import {
   approveCampaign,
   confirmCampaignLeadCompliance,
   pauseCampaignSending,
+  rescheduleCampaignQueuedEmails,
   resumeCampaignSending,
   scheduleApprovedCampaign,
   updateCampaignContent
@@ -54,7 +55,7 @@ const campaignDetailInclude = {
 } satisfies Prisma.CampaignInclude;
 
 const sendJobInclude = {
-  sendingAccount: true
+  sendingAccount: { include: { limits: true } }
 } satisfies Prisma.SendJobInclude;
 
 const emailMessageInclude = {
@@ -269,6 +270,8 @@ export default async function CampaignDetailPage({ params }: CampaignPageProps) 
                     : "Send controls appear after the campaign is approved or scheduled."}
                 </div>
               ) : null}
+
+              {activeJob ? <CampaignTimingEditor campaign={campaign} activeJob={activeJob} /> : null}
             </div>
           </section>
 
@@ -431,6 +434,72 @@ function SendMonitor({
   );
 }
 
+function CampaignTimingEditor({
+  campaign,
+  activeJob
+}: {
+  campaign: CampaignDetail;
+  activeJob: SendJobDetail;
+}) {
+  const defaultStartAt = formatDateTimeLocalKuwait(new Date(activeJob.updatedAt.getTime() + 5 * 60 * 1000));
+  const spacingSeconds = activeJob.sendingAccount.limits?.minDelaySeconds ?? 30;
+  return (
+    <details className="advanced-inline campaign-timing-editor">
+      <summary>Edit queued email timing</summary>
+      <form action={rescheduleCampaignQueuedEmails} className="stack" style={{ marginTop: 12 }}>
+        <input type="hidden" name="campaignId" value={campaign.id} />
+        <div className="alert">
+          This changes only emails that are still queued. Already-sent emails stay unchanged.
+        </div>
+        <label className="field">
+          <span>Start remaining queued emails</span>
+          <input
+            className="input"
+            name="startAt"
+            type="datetime-local"
+            defaultValue={defaultStartAt}
+            required
+          />
+          <small>Kuwait time. Use this if you want queued emails to start later or restart now.</small>
+        </label>
+        <label className="field">
+          <span>Spacing between recipients</span>
+          <input
+            className="input"
+            name="spacingSeconds"
+            type="number"
+            min={5}
+            max={3600}
+            defaultValue={spacingSeconds}
+            required
+          />
+          <small>The daily and per-minute safety limits still apply.</small>
+        </label>
+        <div className="campaign-step-timing">
+          {campaign.steps.map((step) => (
+            <label className="field" key={step.id}>
+              <span>Step {step.stepOrder} delay days</span>
+              <input type="hidden" name="stepId" value={step.id} />
+              <input
+                className="input"
+                name="stepDelayDays"
+                type="number"
+                min={0}
+                max={30}
+                defaultValue={step.delayDays}
+                required
+              />
+            </label>
+          ))}
+        </div>
+        <button className="secondary-button" type="submit">
+          Update queued timing
+        </button>
+      </form>
+    </details>
+  );
+}
+
 function SafetyPanel({
   campaignId,
   blockers,
@@ -517,6 +586,10 @@ function ConfirmLeadComplianceForm({ campaignId }: { campaignId: string }) {
       </button>
     </form>
   );
+}
+
+function formatDateTimeLocalKuwait(date: Date) {
+  return new Date(date.getTime() + 3 * 60 * 60 * 1000).toISOString().slice(0, 16);
 }
 
 function PreviewPanel({ preview }: { preview: string }) {
