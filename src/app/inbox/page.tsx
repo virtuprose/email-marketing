@@ -1,12 +1,26 @@
 import {
   AiReplyDraftStatus,
   MeetingSlotStatus,
+  MessageChannel,
   Prisma,
   ReplyIntent,
   ReplyStatus,
   SendingAccountStatus
 } from "@prisma/client";
-import { Bot, CalendarDays, Flame, Inbox, RotateCcw, Send, Sparkles, UserCheck } from "lucide-react";
+import {
+  AlertTriangle,
+  Bot,
+  CalendarDays,
+  CheckCircle2,
+  Flame,
+  Inbox,
+  Mail,
+  MessageCircle,
+  RotateCcw,
+  Send,
+  Sparkles,
+  UserCheck
+} from "lucide-react";
 import Link from "next/link";
 import {
   bookMeetingSlotForReply,
@@ -96,8 +110,8 @@ export default async function InboxPage({ searchParams }: InboxPageProps) {
     <>
       <PageHeader
         eyebrow="Replies"
-        title="Replies"
-        description="AI reads replies, drafts safe responses, and shows you who needs attention."
+        title="Reply command center"
+        description="See every captured reply, what AI understood, and the next action to move the lead forward."
         actions={
           <Link className="secondary-button" href="/pipeline">
             <UserCheck size={16} aria-hidden="true" /> View Hot Leads
@@ -106,13 +120,13 @@ export default async function InboxPage({ searchParams }: InboxPageProps) {
       />
 
       <section className="grid grid-4" aria-label="Inbox metrics">
-        <Metric icon={<Inbox size={18} />} label="Replies" value={counts.total} note="All captured replies" />
-        <Metric icon={<Flame size={18} />} label="Hot leads" value={counts.hot} note="Ready for you" />
+        <Metric icon={<Inbox size={18} />} label="Captured" value={counts.total} note="Email and WhatsApp" />
+        <Metric icon={<Flame size={18} />} label="Hot leads" value={counts.hot} note="Prioritize these" />
         <Metric
           icon={<Sparkles size={18} />}
-          label="Ready replies"
+          label="Draft ready"
           value={counts.draftReady}
-          note="AI prepared responses"
+          note="Review or send"
         />
         <Metric
           icon={<Bot size={18} />}
@@ -138,24 +152,14 @@ export default async function InboxPage({ searchParams }: InboxPageProps) {
           <div className="panel-body stack">
             {replies.length ? (
               replies.map((reply) => (
-                <Link
+                <ReplyQueueItem
                   key={reply.id}
-                  className="reply-list-item"
+                  reply={reply}
+                  selected={activeReply?.id === reply.id}
                   href={`/inbox?selected=${reply.id}${params.intent ? `&intent=${params.intent}` : ""}${
                     params.status ? `&status=${params.status}` : ""
                   }`}
-                >
-                  <span className="reply-list-main">
-                    <strong>
-                      {reply.lead?.company || reply.lead?.email || reply.fromEmail || reply.fromPhoneE164}
-                    </strong>
-                    <span>{reply.subject}</span>
-                  </span>
-                  <span className="reply-list-meta">
-                    <StatusBadge label={replyIntentLabels[reply.intent]} status={reply.intent} />
-                    <span>{formatDate(reply.receivedAt)}</span>
-                  </span>
-                </Link>
+                />
               ))
             ) : (
               <div className="empty-state">No replies match this view yet.</div>
@@ -170,6 +174,32 @@ export default async function InboxPage({ searchParams }: InboxPageProps) {
         />
       </div>
     </>
+  );
+}
+
+function ReplyQueueItem({ reply, href, selected }: { reply: ReplyDetail; href: string; selected: boolean }) {
+  const draft = reply.drafts[0];
+  const action = replyActionLabel(reply, draft);
+  return (
+    <Link
+      className={`reply-list-item reply-work-item${selected ? " reply-list-item-active" : ""}`}
+      href={href}
+      aria-current={selected ? "page" : undefined}
+    >
+      <span className="reply-channel-icon" aria-hidden="true">
+        {reply.channel === MessageChannel.WHATSAPP ? <MessageCircle size={17} /> : <Mail size={17} />}
+      </span>
+      <span className="reply-list-main">
+        <strong>{replyLeadName(reply)}</strong>
+        <span>{replyPreview(reply)}</span>
+        <span className="reply-contact-line">{replyContact(reply)}</span>
+      </span>
+      <span className="reply-list-meta">
+        <StatusBadge label={replyIntentLabels[reply.intent]} status={reply.intent} />
+        <span>{action}</span>
+        <span>{formatDate(reply.receivedAt)}</span>
+      </span>
+    </Link>
   );
 }
 
@@ -295,86 +325,71 @@ function ReplyDetailPanel({
   const draft = reply.drafts[0];
   const canSendDraft = draft && draft.status === AiReplyDraftStatus.DRAFT && sendingAccounts.length > 0;
   const aiPaused = Boolean(reply.lead?.aiAutoReplyPaused);
+  const nextAction = replyActionLabel(reply, draft);
 
   return (
-    <aside className="panel">
-      <div className="panel-header">
-        <div>
-          <h2>{reply.lead?.company || reply.fromEmail || reply.fromPhoneE164}</h2>
-          <p className="muted">{reply.fromEmail || reply.fromPhoneE164}</p>
+    <aside className="panel reply-detail-panel">
+      <div className="panel-header reply-detail-header">
+        <div className="reply-detail-heading">
+          <span className="reply-channel-icon large" aria-hidden="true">
+            {reply.channel === MessageChannel.WHATSAPP ? <MessageCircle size={20} /> : <Mail size={20} />}
+          </span>
+          <div>
+            <h2>{replyLeadName(reply)}</h2>
+            <p className="muted">{replyContact(reply)}</p>
+          </div>
         </div>
         <StatusBadge label={replyStatusLabels[reply.status]} status={reply.status} />
       </div>
       <div className="panel-body stack">
-        <div className="grid grid-3">
+        <div className="reply-action-card">
+          <div>
+            <span className="reply-action-eyebrow">Next action</span>
+            <strong>{nextAction}</strong>
+            <p>
+              {reply.aiSuggestedAction ||
+                reply.aiSummary ||
+                "Review the latest message and decide whether to send the AI draft or close it."}
+            </p>
+          </div>
+          {reply.ownerActionRequired ? (
+            <AlertTriangle size={20} aria-label="Needs owner review" />
+          ) : draft?.status === AiReplyDraftStatus.SENT || reply.status === ReplyStatus.AUTO_REPLIED ? (
+            <CheckCircle2 size={20} aria-label="AI replied" />
+          ) : (
+            <Sparkles size={20} aria-label="AI prepared" />
+          )}
+        </div>
+
+        <div className="grid grid-4 reply-signal-grid">
           <MiniMetric label="What they want" value={replyIntentLabels[reply.intent]} status={reply.intent} />
+          <MiniMetric
+            label="Sales stage"
+            value={salesStageLabel(reply.salesStage ?? reply.lead?.salesStage)}
+          />
           <MiniMetric label="Tone" value={replySentimentLabels[reply.sentiment]} status={reply.sentiment} />
           <MiniMetric label="AI confidence" value={confidenceLabel(reply.aiConfidence)} />
         </div>
 
-        <div className="profile-list">
-          <ProfileRow
-            label="Contact status"
-            value={reply.lead ? leadStatusLabels[reply.lead.status] : "Unknown"}
-          />
-          <ProfileRow label="Campaign" value={reply.campaign?.name || "Not matched"} />
-          <ProfileRow label="Service" value={reply.campaign?.offer.name || "Not matched"} />
-          <ProfileRow
-            label="Sales stage"
-            value={salesStageLabel(reply.salesStage ?? reply.lead?.salesStage)}
-          />
-          <ProfileRow label="Language" value={reply.language === "ar" ? "Arabic" : "English"} />
-          <ProfileRow
-            label="Missing details"
-            value={reply.missingContactFields.length ? reply.missingContactFields.join(", ") : "None"}
-          />
-          <ProfileRow label="Received" value={formatDate(reply.receivedAt)} />
-          <ProfileRow
-            label="AI for this lead"
-            value={aiPaused ? "You are handling this lead" : "AI can help"}
-          />
+        <div className="reply-section">
+          <div className="reply-section-header">
+            <h3>Customer message</h3>
+            <span>{formatDate(reply.receivedAt)}</span>
+          </div>
+          <pre className="email-preview readable-preview">{reply.bodyText}</pre>
         </div>
 
-        {reply.aiSummary ? (
-          <div className="alert success-alert">
-            <strong>AI summary</strong>
-            <br />
-            {reply.aiSummary}
+        <div className="reply-section">
+          <div className="reply-section-header">
+            <h3>AI draft</h3>
+            {draft ? (
+              <StatusBadge label={aiReplyDraftStatusLabels[draft.status]} status={draft.status} />
+            ) : null}
           </div>
-        ) : null}
-
-        {reply.aiSuggestedAction ? (
-          <div className="alert">
-            <strong>Suggested next action</strong>
-            <br />
-            {reply.aiSuggestedAction}
-          </div>
-        ) : null}
-
-        <div>
-          <h3>What they said</h3>
-          <pre className="email-preview">{reply.bodyText}</pre>
-        </div>
-
-        <ConversationTimeline reply={reply} />
-
-        <MeetingBookingPanel reply={reply} availableSlots={availableSlots} />
-
-        <div>
-          <h3>Suggested reply</h3>
           {draft ? (
             <div className="stack" style={{ marginTop: 8 }}>
-              <div className="profile-row">
-                <span>Reply status</span>
-                <span>
-                  <StatusBadge label={aiReplyDraftStatusLabels[draft.status]} status={draft.status} />
-                </span>
-              </div>
-              <div className="profile-row">
-                <span>Subject</span>
-                <span>{draft.subject}</span>
-              </div>
-              <pre className="email-preview">{draft.bodyText}</pre>
+              {draft.subject ? <p className="reply-draft-subject">{draft.subject}</p> : null}
+              <pre className="email-preview readable-preview">{draft.bodyText}</pre>
               {draft.riskFlags.length ? (
                 <div className="tag-list">
                   {draft.riskFlags.map((flag) => (
@@ -384,34 +399,58 @@ function ReplyDetailPanel({
                   ))}
                 </div>
               ) : null}
+              {canSendDraft ? (
+                <form action={sendAiReplyDraftAction} className="reply-send-form">
+                  <input type="hidden" name="draftId" value={draft.id} />
+                  <input type="hidden" name="replyId" value={reply.id} />
+                  <label className="field">
+                    <span>Send from</span>
+                    <select className="select" name="sendingAccountId">
+                      {sendingAccounts.map((account) => (
+                        <option key={account.id} value={account.id}>
+                          {account.name} -{" "}
+                          {account.dryRun ? "test mode" : sendingAccountStatusLabels[account.status]}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <button className="button" type="submit">
+                    <Send size={16} aria-hidden="true" /> Send AI reply
+                  </button>
+                </form>
+              ) : null}
             </div>
           ) : (
             <p className="muted">No AI draft exists for this reply.</p>
           )}
         </div>
 
-        <div className="stack">
-          {canSendDraft ? (
-            <form action={sendAiReplyDraftAction} className="stack">
-              <input type="hidden" name="draftId" value={draft.id} />
-              <input type="hidden" name="replyId" value={reply.id} />
-              <label className="field">
-                <span>Send from</span>
-                <select className="select" name="sendingAccountId">
-                  {sendingAccounts.map((account) => (
-                    <option key={account.id} value={account.id}>
-                      {account.name} -{" "}
-                      {account.dryRun ? "test mode" : sendingAccountStatusLabels[account.status]}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <button className="button" type="submit">
-                <Send size={16} aria-hidden="true" /> Send AI reply
-              </button>
-            </form>
-          ) : null}
+        <ConversationTimeline reply={reply} />
 
+        <MeetingBookingPanel reply={reply} availableSlots={availableSlots} />
+
+        <details className="advanced-inline reply-details-more">
+          <summary>Lead and AI details</summary>
+          <div className="profile-list">
+            <ProfileRow
+              label="Contact status"
+              value={reply.lead ? leadStatusLabels[reply.lead.status] : "Unknown"}
+            />
+            <ProfileRow label="Campaign" value={reply.campaign?.name || "Not matched"} />
+            <ProfileRow label="Service" value={reply.campaign?.offer.name || "Not matched"} />
+            <ProfileRow label="Language" value={reply.language === "ar" ? "Arabic" : "English"} />
+            <ProfileRow
+              label="Missing details"
+              value={reply.missingContactFields.length ? reply.missingContactFields.join(", ") : "None"}
+            />
+            <ProfileRow
+              label="AI for this lead"
+              value={aiPaused ? "You are handling this lead" : "AI can help"}
+            />
+          </div>
+        </details>
+
+        <div className="stack">
           <div className="toolbar" style={{ marginBottom: 0 }}>
             {reply.lead ? (
               aiPaused ? (
@@ -462,8 +501,11 @@ function ReplyDetailPanel({
 function ConversationTimeline({ reply }: { reply: ReplyDetail }) {
   const messages = reply.conversation?.messages.slice().reverse() ?? [];
   return (
-    <div>
-      <h3>Conversation history</h3>
+    <div className="reply-section">
+      <div className="reply-section-header">
+        <h3>Saved conversation</h3>
+        <span>{messages.length ? `${messages.length} messages` : "No history yet"}</span>
+      </div>
       <div className="conversation-timeline">
         {messages.length ? (
           messages.map((message) => (
@@ -599,4 +641,40 @@ function ProfileRow({ label, value }: { label: string; value: string }) {
       <span>{value}</span>
     </div>
   );
+}
+
+function replyLeadName(reply: ReplyDetail) {
+  const name = [reply.lead?.firstName, reply.lead?.lastName].filter(Boolean).join(" ");
+  return (
+    reply.lead?.company ||
+    name ||
+    reply.fromEmail ||
+    reply.fromPhoneE164 ||
+    reply.lead?.email ||
+    "Unknown lead"
+  );
+}
+
+function replyContact(reply: ReplyDetail) {
+  if (reply.channel === MessageChannel.WHATSAPP) {
+    return reply.fromPhoneE164 || reply.lead?.phoneE164 || "WhatsApp number not saved";
+  }
+  return reply.fromEmail || reply.lead?.email || "Email not saved";
+}
+
+function replyPreview(reply: ReplyDetail) {
+  const text =
+    reply.channel === MessageChannel.WHATSAPP ? reply.bodyText : `${reply.subject} ${reply.bodyText}`;
+  const compact = text.replace(/\s+/g, " ").trim();
+  return compact.length > 130 ? `${compact.slice(0, 130)}...` : compact || "No message text";
+}
+
+function replyActionLabel(reply: ReplyDetail, draft?: ReplyDetail["drafts"][number]) {
+  if (reply.ownerActionRequired) return "Needs your review";
+  if (reply.status === ReplyStatus.AUTO_REPLIED || draft?.status === AiReplyDraftStatus.SENT)
+    return "AI replied";
+  if (draft?.status === AiReplyDraftStatus.DRAFT) return "Draft ready";
+  if (reply.status === ReplyStatus.HOT_HANDOFF) return "Hot lead";
+  if (reply.status === ReplyStatus.CLOSED) return "Closed";
+  return "Review";
 }

@@ -650,7 +650,14 @@ export async function handleMetaWhatsappWebhook(payload: MetaWhatsappWebhookPayl
         outcomes.push(await handleMetaStatus(status));
       }
       for (const message of value.messages ?? []) {
-        outcomes.push(await handleMetaInboundMessage({ message, metadata: value.metadata, raw: payload }));
+        outcomes.push(
+          await handleMetaInboundMessage({
+            message,
+            metadata: value.metadata,
+            contacts: value.contacts,
+            raw: payload
+          })
+        );
       }
     }
   }
@@ -701,10 +708,12 @@ async function handleMetaStatus(status: MetaWhatsappStatus) {
 async function handleMetaInboundMessage({
   message,
   metadata,
+  contacts,
   raw
 }: {
   message: MetaWhatsappInboundMessage;
   metadata?: MetaWhatsappMetadata;
+  contacts?: MetaWhatsappContact[];
   raw: MetaWhatsappWebhookPayload;
 }) {
   const providerMessageId = message.id;
@@ -716,6 +725,18 @@ async function handleMetaInboundMessage({
   });
   if (existing) return { duplicate: true, replyId: existing.id };
 
+  const existingMessage = await prisma.whatsappMessage.findUnique({
+    where: { providerMessageId },
+    include: { inboundReplies: { orderBy: { createdAt: "desc" }, take: 1 } }
+  });
+  if (existingMessage) {
+    return {
+      duplicate: true,
+      messageId: existingMessage.id,
+      replyId: existingMessage.inboundReplies[0]?.id ?? null
+    };
+  }
+
   const fromPhoneE164 = normalizeWhatsappPhone(message.from);
   const toPhoneE164 = normalizeWhatsappPhone(
     metadata?.display_phone_number || metadata?.phone_number_id || ""
@@ -724,12 +745,16 @@ async function handleMetaInboundMessage({
   const receivedAt = new Date(Number(message.timestamp || Math.floor(Date.now() / 1000)) * 1000);
   if (!fromPhoneE164) throw new Error("Inbound Meta WhatsApp webhook is missing sender phone.");
 
+  const profileName = whatsappProfileNameForMessage(contacts, fromPhoneE164);
+  const parsedName = splitWhatsappProfileName(profileName);
   let lead = await prisma.lead.findUnique({ where: { phoneE164: fromPhoneE164 } });
   if (!lead) {
     lead = await prisma.lead.create({
       data: {
         email: `${fromPhoneE164.replace(/\D/g, "")}@whatsapp.local`,
         phoneE164: fromPhoneE164,
+        firstName: parsedName.firstName,
+        lastName: parsedName.lastName,
         source: "whatsapp_inbound",
         legalBasis: "Inbound WhatsApp conversation",
         consentNotes: "Created from inbound WhatsApp reply.",
@@ -743,15 +768,15 @@ async function handleMetaInboundMessage({
       }
     });
   } else {
+    const stopped = lead.whatsappStatus === WhatsappLeadStatus.STOPPED || Boolean(lead.whatsappStoppedAt);
     lead = await prisma.lead.update({
       where: { id: lead.id },
       data: {
-        whatsappOptIn: lead.whatsappOptIn || true,
+        ...(parsedName.firstName && !lead.firstName ? { firstName: parsedName.firstName } : {}),
+        ...(parsedName.lastName && !lead.lastName ? { lastName: parsedName.lastName } : {}),
+        whatsappOptIn: stopped ? lead.whatsappOptIn : true,
         whatsappConsentSource: lead.whatsappConsentSource || "Inbound WhatsApp reply",
-        whatsappStatus:
-          lead.whatsappStatus === WhatsappLeadStatus.STOPPED
-            ? lead.whatsappStatus
-            : WhatsappLeadStatus.OPTED_IN,
+        whatsappStatus: stopped ? lead.whatsappStatus : WhatsappLeadStatus.OPTED_IN,
         lastWhatsappCustomerMessageAt: receivedAt,
         whatsappServiceWindowExpiresAt: new Date(receivedAt.getTime() + 24 * 60 * 60 * 1000)
       }
@@ -810,6 +835,28 @@ async function handleMetaInboundMessage({
   });
 
   return { duplicate: result.duplicate, replyId: result.reply.id };
+}
+
+export function whatsappProfileNameForMessage(
+  contacts: MetaWhatsappContact[] | undefined,
+  fromPhoneE164: string
+) {
+  const fromDigits = normalizeWhatsappPhone(fromPhoneE164).replace(/\D/g, "");
+  const match = contacts?.find(
+    (contact) => normalizeWhatsappPhone(contact.wa_id).replace(/\D/g, "") === fromDigits
+  );
+  const name = match?.profile?.name?.trim();
+  return name || null;
+}
+
+function splitWhatsappProfileName(name: string | null) {
+  if (!name) return { firstName: null, lastName: null };
+  const parts = name.split(/\s+/).filter(Boolean);
+  if (!parts.length) return { firstName: null, lastName: null };
+  return {
+    firstName: parts[0].slice(0, 80),
+    lastName: parts.slice(1).join(" ").slice(0, 120) || null
+  };
 }
 
 export function isWhatsappOptOut(bodyText: string) {
@@ -1102,6 +1149,11 @@ export type MetaWhatsappWebhookPayload = {
       };
     }>;
   }>;
+};
+
+type MetaWhatsappContact = {
+  wa_id?: string;
+  profile?: { name?: string };
 };
 
 type MetaWhatsappMetadata = {

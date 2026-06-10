@@ -1,5 +1,16 @@
 import { AiReplyDraftStatus, MeetingSlotStatus, Prisma, ReplyIntent, ReplyStatus } from "@prisma/client";
-import { ArrowLeft, CalendarDays, Flame, RotateCcw, Send, UserCheck } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowLeft,
+  CalendarDays,
+  CheckCircle2,
+  Flame,
+  MessageCircle,
+  RotateCcw,
+  Send,
+  Sparkles,
+  UserCheck
+} from "lucide-react";
 import Link from "next/link";
 import {
   bookMeetingSlotForReply,
@@ -75,8 +86,8 @@ export default async function WhatsappInboxPage({ searchParams }: PageProps) {
     <>
       <PageHeader
         eyebrow="WhatsApp AI Inbox"
-        title="Qualify WhatsApp replies"
-        description="AI answers safe replies inside the 24-hour window and hands hot or risky leads to you."
+        title="WhatsApp reply queue"
+        description="Track every WhatsApp number, saved conversation, AI reply state, and the next action."
         actions={
           <Link className="secondary-button" href="/whatsapp">
             <ArrowLeft size={16} aria-hidden="true" /> Back
@@ -85,10 +96,10 @@ export default async function WhatsappInboxPage({ searchParams }: PageProps) {
       />
 
       <section className="grid grid-4" aria-label="WhatsApp inbox metrics">
-        <Metric label="Replies" value={counts.total} />
-        <Metric label="Hot" value={counts.hot} />
+        <Metric label="Captured" value={counts.total} />
+        <Metric label="Hot leads" value={counts.hot} />
         <Metric label="Draft ready" value={counts.draftReady} />
-        <Metric label="Owner review" value={counts.ownerReview} />
+        <Metric label="Needs you" value={counts.ownerReview} />
       </section>
 
       <section className="panel" style={{ marginTop: 16 }}>
@@ -134,20 +145,14 @@ export default async function WhatsappInboxPage({ searchParams }: PageProps) {
           <div className="panel-body stack">
             {replies.length ? (
               replies.map((reply) => (
-                <Link
+                <WhatsappReplyQueueItem
                   key={reply.id}
-                  className="reply-list-item"
-                  href={`/whatsapp/inbox?selected=${reply.id}`}
-                >
-                  <span className="reply-list-main">
-                    <strong>{reply.lead?.company || reply.fromPhoneE164 || "WhatsApp lead"}</strong>
-                    <span>{reply.bodyText.slice(0, 90)}</span>
-                  </span>
-                  <span className="reply-list-meta">
-                    <StatusBadge label={replyIntentLabels[reply.intent]} status={reply.intent} />
-                    <span>{formatDate(reply.receivedAt)}</span>
-                  </span>
-                </Link>
+                  reply={reply}
+                  selected={activeReply?.id === reply.id}
+                  href={`/whatsapp/inbox?selected=${reply.id}${params.intent ? `&intent=${params.intent}` : ""}${
+                    params.status ? `&status=${params.status}` : ""
+                  }`}
+                />
               ))
             ) : (
               <div className="empty-state">No WhatsApp replies match this view yet.</div>
@@ -158,6 +163,41 @@ export default async function WhatsappInboxPage({ searchParams }: PageProps) {
         <ReplyDetail reply={activeReply} availableSlots={availableSlots} />
       </div>
     </>
+  );
+}
+
+function WhatsappReplyQueueItem({
+  reply,
+  href,
+  selected
+}: {
+  reply: ReplyDetailData;
+  href: string;
+  selected: boolean;
+}) {
+  const draft = reply.drafts[0];
+  return (
+    <Link
+      className={`reply-list-item reply-work-item${selected ? " reply-list-item-active" : ""}`}
+      href={href}
+      aria-current={selected ? "page" : undefined}
+    >
+      <span className="reply-channel-icon" aria-hidden="true">
+        <MessageCircle size={17} />
+      </span>
+      <span className="reply-list-main">
+        <strong>{replyLeadName(reply)}</strong>
+        <span>{replyPreview(reply)}</span>
+        <span className="reply-contact-line">
+          {reply.fromPhoneE164 || reply.lead?.phoneE164 || "No number saved"}
+        </span>
+      </span>
+      <span className="reply-list-meta">
+        <StatusBadge label={replyIntentLabels[reply.intent]} status={reply.intent} />
+        <span>{replyActionLabel(reply, draft)}</span>
+        <span>{formatDate(reply.receivedAt)}</span>
+      </span>
+    </Link>
   );
 }
 
@@ -188,19 +228,50 @@ function ReplyDetail({
   const draft = reply.drafts?.[0];
   const canSendDraft = draft && draft.status === AiReplyDraftStatus.DRAFT;
   const aiPaused = Boolean(reply.lead?.aiAutoReplyPaused || reply.lead?.whatsappBotPaused);
+  const nextAction = replyActionLabel(reply, draft);
 
   return (
-    <aside className="panel">
-      <div className="panel-header">
-        <div>
-          <h2>{reply.lead?.company || reply.fromPhoneE164 || "WhatsApp lead"}</h2>
-          <p className="muted">{reply.fromPhoneE164}</p>
+    <aside className="panel reply-detail-panel">
+      <div className="panel-header reply-detail-header">
+        <div className="reply-detail-heading">
+          <span className="reply-channel-icon large" aria-hidden="true">
+            <MessageCircle size={20} />
+          </span>
+          <div>
+            <h2>{replyLeadName(reply)}</h2>
+            <p className="muted">
+              {reply.fromPhoneE164 || reply.lead?.phoneE164 || "No WhatsApp number saved"}
+            </p>
+          </div>
         </div>
         <StatusBadge label={replyStatusLabels[reply.status]} status={reply.status} />
       </div>
       <div className="panel-body stack">
-        <div className="grid grid-3">
+        <div className="reply-action-card">
+          <div>
+            <span className="reply-action-eyebrow">Next action</span>
+            <strong>{nextAction}</strong>
+            <p>
+              {reply.aiSuggestedAction ||
+                reply.aiSummary ||
+                "Review the latest WhatsApp message and decide whether to let AI continue."}
+            </p>
+          </div>
+          {reply.ownerActionRequired ? (
+            <AlertTriangle size={20} aria-label="Needs owner review" />
+          ) : draft?.status === AiReplyDraftStatus.SENT || reply.status === ReplyStatus.AUTO_REPLIED ? (
+            <CheckCircle2 size={20} aria-label="AI replied" />
+          ) : (
+            <Sparkles size={20} aria-label="AI prepared" />
+          )}
+        </div>
+
+        <div className="grid grid-4 reply-signal-grid">
           <MiniMetric label="Intent" value={replyIntentLabels[reply.intent]} status={reply.intent} />
+          <MiniMetric
+            label="Sales stage"
+            value={salesStageLabel(reply.salesStage ?? reply.lead?.salesStage)}
+          />
           <MiniMetric
             label="Sentiment"
             value={replySentimentLabels[reply.sentiment]}
@@ -209,64 +280,28 @@ function ReplyDetail({
           <MiniMetric label="Confidence" value={`${reply.aiConfidence}%`} />
         </div>
 
-        <div className="profile-list">
-          <ProfileRow
-            label="Lead status"
-            value={reply.lead ? leadStatusLabels[reply.lead.status] : "Unknown"}
-          />
-          <ProfileRow label="Phone" value={reply.lead?.phoneE164 || reply.fromPhoneE164 || "Unknown"} />
-          <ProfileRow
-            label="Sales stage"
-            value={salesStageLabel(reply.salesStage ?? reply.lead?.salesStage)}
-          />
-          <ProfileRow label="Language" value={reply.language === "ar" ? "Arabic" : "English"} />
-          <ProfileRow
-            label="Missing details"
-            value={reply.missingContactFields.length ? reply.missingContactFields.join(", ") : "None"}
-          />
-          <ProfileRow label="Received" value={formatDate(reply.receivedAt)} />
-          <ProfileRow
-            label="AI for this lead"
-            value={aiPaused ? "You are handling this lead" : "AI can help"}
-          />
-        </div>
-
-        {reply.aiSummary ? (
-          <div className="alert success-alert">
-            <strong>AI summary</strong>
-            <br />
-            {reply.aiSummary}
+        <div className="reply-section">
+          <div className="reply-section-header">
+            <h3>Latest WhatsApp message</h3>
+            <span>{formatDate(reply.receivedAt)}</span>
           </div>
-        ) : null}
-
-        {reply.aiSuggestedAction ? (
-          <div className="alert">
-            <strong>Suggested next action</strong>
-            <br />
-            {reply.aiSuggestedAction}
-          </div>
-        ) : null}
-
-        <div>
-          <h3>Incoming WhatsApp message</h3>
-          <pre className="email-preview">{reply.bodyText}</pre>
+          <pre className="email-preview readable-preview">{reply.bodyText}</pre>
         </div>
 
         <ConversationTimeline reply={reply} />
 
         <MeetingBookingPanel reply={reply} availableSlots={availableSlots} />
 
-        <div>
-          <h3>AI draft</h3>
+        <div className="reply-section">
+          <div className="reply-section-header">
+            <h3>AI draft</h3>
+            {draft ? (
+              <StatusBadge label={aiReplyDraftStatusLabels[draft.status]} status={draft.status} />
+            ) : null}
+          </div>
           {draft ? (
             <div className="stack" style={{ marginTop: 8 }}>
-              <div className="profile-row">
-                <span>Status</span>
-                <span>
-                  <StatusBadge label={aiReplyDraftStatusLabels[draft.status]} status={draft.status} />
-                </span>
-              </div>
-              <pre className="email-preview">{draft.bodyText}</pre>
+              <pre className="email-preview readable-preview">{draft.bodyText}</pre>
               {draft.riskFlags.length ? (
                 <div className="tag-list">
                   {draft.riskFlags.map((flag) => (
@@ -276,23 +311,44 @@ function ReplyDetail({
                   ))}
                 </div>
               ) : null}
+              {canSendDraft ? (
+                <form action={sendAiReplyDraftAction} className="reply-send-form">
+                  <input type="hidden" name="draftId" value={draft.id} />
+                  <input type="hidden" name="replyId" value={reply.id} />
+                  <input type="hidden" name="returnTo" value={`/whatsapp/inbox?selected=${reply.id}`} />
+                  <button className="button" type="submit">
+                    <Send size={16} aria-hidden="true" /> Send WhatsApp AI draft
+                  </button>
+                </form>
+              ) : null}
             </div>
           ) : (
             <p className="muted">No AI draft exists for this WhatsApp reply.</p>
           )}
         </div>
 
+        <details className="advanced-inline reply-details-more">
+          <summary>Lead and AI details</summary>
+          <div className="profile-list">
+            <ProfileRow
+              label="Lead status"
+              value={reply.lead ? leadStatusLabels[reply.lead.status] : "Unknown"}
+            />
+            <ProfileRow label="Phone" value={reply.lead?.phoneE164 || reply.fromPhoneE164 || "Unknown"} />
+            <ProfileRow label="Language" value={reply.language === "ar" ? "Arabic" : "English"} />
+            <ProfileRow
+              label="Missing details"
+              value={reply.missingContactFields.length ? reply.missingContactFields.join(", ") : "None"}
+            />
+            <ProfileRow label="Received" value={formatDate(reply.receivedAt)} />
+            <ProfileRow
+              label="AI for this lead"
+              value={aiPaused ? "You are handling this lead" : "AI can help"}
+            />
+          </div>
+        </details>
+
         <div className="toolbar" style={{ marginBottom: 0 }}>
-          {canSendDraft ? (
-            <form action={sendAiReplyDraftAction}>
-              <input type="hidden" name="draftId" value={draft.id} />
-              <input type="hidden" name="replyId" value={reply.id} />
-              <input type="hidden" name="returnTo" value={`/whatsapp/inbox?selected=${reply.id}`} />
-              <button className="button" type="submit">
-                <Send size={16} aria-hidden="true" /> Send WhatsApp AI draft
-              </button>
-            </form>
-          ) : null}
           {reply.lead ? (
             aiPaused ? (
               <form action={resumeAiForLeadAction}>
@@ -341,8 +397,11 @@ function ReplyDetail({
 function ConversationTimeline({ reply }: { reply: ReplyDetailData }) {
   const messages = reply.conversation?.messages.slice().reverse() ?? [];
   return (
-    <div>
-      <h3>WhatsApp history</h3>
+    <div className="reply-section">
+      <div className="reply-section-header">
+        <h3>Saved WhatsApp history</h3>
+        <span>{messages.length ? `${messages.length} messages` : "No history yet"}</span>
+      </div>
       <div className="conversation-timeline">
         {messages.length ? (
           messages.map((message) => (
@@ -460,4 +519,24 @@ function ProfileRow({ label, value }: { label: string; value: string }) {
       <span>{value}</span>
     </div>
   );
+}
+
+function replyLeadName(reply: ReplyDetailData) {
+  const name = [reply.lead?.firstName, reply.lead?.lastName].filter(Boolean).join(" ");
+  return reply.lead?.company || name || reply.fromPhoneE164 || reply.lead?.phoneE164 || "WhatsApp lead";
+}
+
+function replyPreview(reply: ReplyDetailData) {
+  const compact = reply.bodyText.replace(/\s+/g, " ").trim();
+  return compact.length > 130 ? `${compact.slice(0, 130)}...` : compact || "No message text";
+}
+
+function replyActionLabel(reply: ReplyDetailData, draft?: ReplyDetailData["drafts"][number]) {
+  if (reply.ownerActionRequired) return "Needs your review";
+  if (reply.status === ReplyStatus.AUTO_REPLIED || draft?.status === AiReplyDraftStatus.SENT)
+    return "AI replied";
+  if (draft?.status === AiReplyDraftStatus.DRAFT) return "Draft ready";
+  if (reply.status === ReplyStatus.HOT_HANDOFF) return "Hot lead";
+  if (reply.status === ReplyStatus.CLOSED) return "Closed";
+  return "Review";
 }

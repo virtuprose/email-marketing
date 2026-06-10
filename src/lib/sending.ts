@@ -15,6 +15,8 @@ import {
   type SendingLimit
 } from "@prisma/client";
 import { randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
+import path from "node:path";
 import nodemailer from "nodemailer";
 import {
   detectConversationLanguage,
@@ -54,6 +56,8 @@ const blockedLeadStatuses: LeadStatus[] = [
   LeadStatus.BOUNCED,
   LeadStatus.DO_NOT_CONTACT
 ];
+const EMAIL_LOGO_CID = "virtuprose-email-logo";
+const EMAIL_LOGO_PATH = path.join(process.cwd(), "public", "brand", "virtuprose-email-logo.png");
 
 export function parseSendingControl(value: unknown): SendingControlSettings {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
@@ -657,7 +661,9 @@ async function sendEmail({
     to,
     replyTo: account.replyTo || account.fromEmail,
     subject,
-    text
+    text,
+    html: renderBrandedEmailHtml({ account, subject, text }),
+    attachments: emailLogoAttachments()
   });
 
   return {
@@ -665,6 +671,89 @@ async function sendEmail({
     providerMessageId: info.messageId || `smtp-${randomUUID()}`,
     messageId: info.messageId || `<smtp-${randomUUID()}@${recipientDomain(account.fromEmail)}>`
   };
+}
+
+function emailLogoAttachments() {
+  if (!existsSync(EMAIL_LOGO_PATH)) return [];
+  return [
+    {
+      filename: "virtuprose-email-logo.png",
+      path: EMAIL_LOGO_PATH,
+      cid: EMAIL_LOGO_CID,
+      contentType: "image/png"
+    }
+  ];
+}
+
+function renderBrandedEmailHtml({
+  account,
+  subject,
+  text
+}: {
+  account: SendingAccount;
+  subject: string;
+  text: string;
+}) {
+  const paragraphs = text
+    .split(/\n{2,}/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean)
+    .map(
+      (paragraph) =>
+        `<p style="margin:0 0 14px;color:#102225;font-size:15px;line-height:1.6;">${linkify(escapeHtml(paragraph)).replace(/\n/g, "<br>")}</p>`
+    )
+    .join("");
+
+  return `<!doctype html>
+<html>
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${escapeHtml(subject)}</title>
+  </head>
+  <body style="margin:0;padding:0;background:#f6f8f8;font-family:Arial,Helvetica,sans-serif;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f6f8f8;margin:0;padding:24px 12px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:620px;background:#ffffff;border:1px solid #e3e8e8;border-radius:12px;">
+            <tr>
+              <td style="padding:28px 28px 10px;">
+                <img src="cid:${EMAIL_LOGO_CID}" width="64" height="64" alt="${escapeHtml(account.fromName)}" style="display:block;border:0;outline:none;text-decoration:none;width:64px;height:64px;">
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:10px 28px 8px;">
+                ${paragraphs}
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:12px 28px 28px;color:#667579;font-size:12px;line-height:1.5;">
+                ${escapeHtml(account.fromName)}
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function linkify(value: string) {
+  return value.replace(/https?:\/\/[^\s<]+/g, (url) => {
+    const cleanUrl = url.replace(/[),.;]+$/, "");
+    const suffix = url.slice(cleanUrl.length);
+    return `<a href="${cleanUrl}" style="color:#00aeb7;text-decoration:underline;">${cleanUrl}</a>${suffix}`;
+  });
 }
 
 async function checkSendingLimits(account: SendingAccount, limits: SendingLimit | null, domain: string) {

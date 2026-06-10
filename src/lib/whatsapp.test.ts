@@ -8,6 +8,7 @@ import {
   renderWhatsappTemplateVariables,
   validateMetaWebhookSignature,
   verifyMetaWebhookChallenge,
+  whatsappProfileNameForMessage,
   whatsappReadyReason
 } from "./whatsapp";
 
@@ -87,5 +88,17 @@ describe("whatsapp helpers", () => {
     expect(isWhatsappOptOut("STOP")).toBe(true);
     expect(isWhatsappOptOut("please remove me")).toBe(true);
     expect(isWhatsappOptOut("send me details")).toBe(false);
+  });
+
+  it("matches Meta contact profile names to inbound WhatsApp numbers", () => {
+    expect(
+      whatsappProfileNameForMessage(
+        [
+          { wa_id: "96560000001", profile: { name: "Wrong Contact" } },
+          { wa_id: "96560000000", profile: { name: "Aisha Al Kuwait" } }
+        ],
+        "+96560000000"
+      )
+    ).toBe("Aisha Al Kuwait");
   });
 });
