@@ -921,6 +921,99 @@ tr:last-child td {
   line-height: 1.55;
 }
 
+.email-design-current,
+.email-design-card-head,
+.email-design-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.email-design-current {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: #fbfaf7;
+  padding: 14px;
+}
+
+.email-design-current p,
+.email-design-card-head p {
+  margin: 4px 0 0;
+}
+
+.email-design-upload,
+.email-design-card {
+  display: grid;
+  gap: 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: #fbfaf7;
+  padding: 14px;
+}
+
+.email-design-list {
+  display: grid;
+  gap: 14px;
+}
+
+.email-design-preview {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: white;
+  padding: 12px;
+}
+
+.email-design-preview summary {
+  cursor: pointer;
+  color: var(--text-strong);
+  font-weight: 760;
+}
+
+.email-preview-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 340px);
+  gap: 12px;
+  align-items: start;
+  margin-top: 12px;
+}
+
+.email-design-frame-shell {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.email-design-frame-shell > span {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.email-design-frame-shell iframe {
+  width: 100%;
+  height: 360px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: white;
+}
+
+.email-design-frame-mobile iframe {
+  max-width: 320px;
+  justify-self: center;
+}
+
+.email-design-actions {
+  flex-wrap: wrap;
+}
+
+.email-design-test-form {
+  min-width: min(100%, 520px);
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) minmax(180px, 1fr) auto;
+  gap: 8px;
+}
+
 .checklist-item {
   display: flex;
   align-items: flex-start;
@@ -1556,6 +1649,8 @@ a.deal-contact-value:focus-visible {
   .choice-grid,
   .csv-guide-grid,
   .campaign-step-timing,
+  .email-preview-grid,
+  .email-design-test-form,
   .import-summary-grid {
     grid-template-columns: 1fr;
   }
@@ -1569,9 +1664,16 @@ a.deal-contact-value:focus-visible {
   .reply-send-form,
   .deal-card-head,
   .deal-contact-line,
+  .email-design-current,
+  .email-design-card-head,
+  .email-design-actions,
   .profile-row {
     grid-template-columns: 1fr;
     display: grid;
+  }
+
+  .email-design-frame-mobile iframe {
+    max-width: 100%;
   }
 
   .reply-list-meta {

@@ -87,6 +87,11 @@ enum CampaignReviewSeverity {
   BLOCK
 }
 
+enum EmailDesignValidationStatus {
+  VALID
+  BLOCKED
+}
+
 enum SendingAccountStatus {
   ACTIVE
   PAUSED
@@ -507,39 +512,65 @@ model AuditLog {
 }
 
 model Campaign {
-  id                    String              @id @default(cuid())
-  name                  String
-  objective             CampaignObjective
-  status                CampaignStatus      @default(DRAFT)
-  offerId               String              @map("offer_id")
-  audienceFilter        Json                @map("audience_filter")
-  estimatedRecipients   Int                 @default(0) @map("estimated_recipients")
-  personalizationFields String[]            @default([]) @map("personalization_fields")
-  riskFlags             String[]            @default([]) @map("risk_flags")
-  claimsUsed            String[]            @default([]) @map("claims_used")
-  aiConfidence          Int                 @default(0) @map("ai_confidence")
-  aiExplanation         String?             @map("ai_explanation")
-  approvedAt            DateTime?           @map("approved_at")
-  createdAt             DateTime            @default(now()) @map("created_at")
-  updatedAt             DateTime            @updatedAt @map("updated_at")
-  offer                 Offer               @relation(fields: [offerId], references: [id], onDelete: Restrict)
-  steps                 CampaignStep[]
-  variants              CampaignVariant[]
-  recipients            CampaignRecipient[]
-  aiGenerations         AiGeneration[]
-  reviews               CampaignReview[]
-  sendJobs              SendJob[]
-  emailMessages         EmailMessage[]
-  emailEvents           EmailEvent[]
-  unsubscribeTokens     UnsubscribeToken[]
-  inboundReplies        InboundReply[]
-  aiReplyDrafts         AiReplyDraft[]
-  deals                 Deal[]
+  id                            String                @id @default(cuid())
+  name                          String
+  objective                     CampaignObjective
+  status                        CampaignStatus        @default(DRAFT)
+  offerId                       String                @map("offer_id")
+  audienceFilter                Json                  @map("audience_filter")
+  estimatedRecipients           Int                   @default(0) @map("estimated_recipients")
+  personalizationFields         String[]              @default([]) @map("personalization_fields")
+  riskFlags                     String[]              @default([]) @map("risk_flags")
+  claimsUsed                    String[]              @default([]) @map("claims_used")
+  aiConfidence                  Int                   @default(0) @map("ai_confidence")
+  aiExplanation                 String?               @map("ai_explanation")
+  selectedEmailDesignTemplateId String?               @map("selected_email_design_template_id")
+  approvedAt                    DateTime?             @map("approved_at")
+  createdAt                     DateTime              @default(now()) @map("created_at")
+  updatedAt                     DateTime              @updatedAt @map("updated_at")
+  offer                         Offer                 @relation(fields: [offerId], references: [id], onDelete: Restrict)
+  selectedEmailDesignTemplate   EmailDesignTemplate?  @relation("CampaignSelectedEmailDesign", fields: [selectedEmailDesignTemplateId], references: [id], onDelete: SetNull)
+  emailDesignTemplates          EmailDesignTemplate[] @relation("CampaignEmailDesignTemplates")
+  steps                         CampaignStep[]
+  variants                      CampaignVariant[]
+  recipients                    CampaignRecipient[]
+  aiGenerations                 AiGeneration[]
+  reviews                       CampaignReview[]
+  sendJobs                      SendJob[]
+  emailMessages                 EmailMessage[]
+  emailEvents                   EmailEvent[]
+  unsubscribeTokens             UnsubscribeToken[]
+  inboundReplies                InboundReply[]
+  aiReplyDrafts                 AiReplyDraft[]
+  deals                         Deal[]
 
   @@index([status])
   @@index([objective])
   @@index([offerId])
+  @@index([selectedEmailDesignTemplateId])
   @@map("campaigns")
+}
+
+model EmailDesignTemplate {
+  id                  String                      @id @default(cuid())
+  campaignId          String                      @map("campaign_id")
+  name                String
+  originalHtml        String                      @map("original_html")
+  sanitizedHtml       String                      @map("sanitized_html")
+  status              EmailDesignValidationStatus @default(BLOCKED)
+  warnings            String[]                    @default([])
+  errors              String[]                    @default([])
+  selected            Boolean                     @default(false)
+  createdAt           DateTime                    @default(now()) @map("created_at")
+  updatedAt           DateTime                    @updatedAt @map("updated_at")
+  campaign            Campaign                    @relation("CampaignEmailDesignTemplates", fields: [campaignId], references: [id], onDelete: Cascade)
+  selectedByCampaigns Campaign[]                  @relation("CampaignSelectedEmailDesign")
+  messages            EmailMessage[]
+
+  @@index([campaignId])
+  @@index([status])
+  @@index([selected])
+  @@map("email_design_templates")
 }
 
 model CampaignStep {
@@ -702,40 +733,45 @@ model SendJob {
 }
 
 model EmailMessage {
-  id                  String             @id @default(cuid())
-  sendJobId           String             @map("send_job_id")
-  campaignId          String             @map("campaign_id")
-  campaignRecipientId String             @map("campaign_recipient_id")
-  campaignStepId      String             @map("campaign_step_id")
-  leadId              String             @map("lead_id")
-  sendingAccountId    String             @map("sending_account_id")
-  status              EmailMessageStatus @default(QUEUED)
-  recipientEmail      String             @map("recipient_email")
-  recipientDomain     String             @map("recipient_domain")
-  subject             String
-  bodyText            String             @map("body_text")
-  providerMessageId   String?            @map("provider_message_id")
-  messageIdHeader     String?            @map("message_id_header")
-  error               String?
-  queuedAt            DateTime           @default(now()) @map("queued_at")
-  startedAt           DateTime?          @map("started_at")
-  sentAt              DateTime?          @map("sent_at")
-  skippedAt           DateTime?          @map("skipped_at")
-  failedAt            DateTime?          @map("failed_at")
-  createdAt           DateTime           @default(now()) @map("created_at")
-  updatedAt           DateTime           @updatedAt @map("updated_at")
-  sendJob             SendJob            @relation(fields: [sendJobId], references: [id], onDelete: Cascade)
-  campaign            Campaign           @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  campaignRecipient   CampaignRecipient  @relation(fields: [campaignRecipientId], references: [id], onDelete: Cascade)
-  campaignStep        CampaignStep       @relation(fields: [campaignStepId], references: [id], onDelete: Cascade)
-  lead                Lead               @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  sendingAccount      SendingAccount     @relation(fields: [sendingAccountId], references: [id], onDelete: Restrict)
-  events              EmailEvent[]
-  inboundReplies      InboundReply[]
+  id                    String               @id @default(cuid())
+  sendJobId             String               @map("send_job_id")
+  campaignId            String               @map("campaign_id")
+  campaignRecipientId   String               @map("campaign_recipient_id")
+  campaignStepId        String               @map("campaign_step_id")
+  leadId                String               @map("lead_id")
+  sendingAccountId      String               @map("sending_account_id")
+  status                EmailMessageStatus   @default(QUEUED)
+  recipientEmail        String               @map("recipient_email")
+  recipientDomain       String               @map("recipient_domain")
+  subject               String
+  bodyText              String               @map("body_text")
+  bodyHtml              String?              @map("body_html")
+  unsubscribeUrl        String?              @map("unsubscribe_url")
+  emailDesignTemplateId String?              @map("email_design_template_id")
+  providerMessageId     String?              @map("provider_message_id")
+  messageIdHeader       String?              @map("message_id_header")
+  error                 String?
+  queuedAt              DateTime             @default(now()) @map("queued_at")
+  startedAt             DateTime?            @map("started_at")
+  sentAt                DateTime?            @map("sent_at")
+  skippedAt             DateTime?            @map("skipped_at")
+  failedAt              DateTime?            @map("failed_at")
+  createdAt             DateTime             @default(now()) @map("created_at")
+  updatedAt             DateTime             @updatedAt @map("updated_at")
+  sendJob               SendJob              @relation(fields: [sendJobId], references: [id], onDelete: Cascade)
+  campaign              Campaign             @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaignRecipient     CampaignRecipient    @relation(fields: [campaignRecipientId], references: [id], onDelete: Cascade)
+  campaignStep          CampaignStep         @relation(fields: [campaignStepId], references: [id], onDelete: Cascade)
+  lead                  Lead                 @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  emailDesignTemplate   EmailDesignTemplate? @relation(fields: [emailDesignTemplateId], references: [id], onDelete: SetNull)
+  sendingAccount        SendingAccount       @relation(fields: [sendingAccountId], references: [id], onDelete: Restrict)
+  events                EmailEvent[]
+  inboundReplies        InboundReply[]
 
   @@index([sendJobId])
   @@index([campaignId])
   @@index([leadId])
+  @@index([emailDesignTemplateId])
   @@index([status])
   @@index([queuedAt])
   @@map("email_messages")

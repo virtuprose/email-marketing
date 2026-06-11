@@ -24,6 +24,7 @@ Read:
 
 - `docs/VPS_DEPLOYMENT.md` for deployment, backup, and redeploy commands.
 - `docs/PROJECT_PROGRESS.md` for current progress and pending production items.
+- `docs/CUSTOM_HTML_EMAIL_DESIGNS.md` for preparing, uploading, previewing, testing, and selecting premium HTML email wrappers.
 
 ## Local Setup
 
@@ -116,6 +117,7 @@ Email sending infrastructure exists and production SMTP is configured through Ho
 - SMTP sending account settings with dry-run mode by default
 - Conservative daily, per-minute, and per-domain sending caps
 - Queue-based campaign scheduling for approved campaigns
+- Custom HTML email designs on campaign detail pages: upload up to 3 `.html` wrappers, validate, preview desktop/mobile, select one design, and send a test email
 - Worker-side suppression, unsubscribe, campaign-state, account-state, and rate-limit checks
 - Email message records, send jobs, email events, provider message IDs, and errors
 - Public unsubscribe links that immediately suppress the lead and skip remaining queued campaign emails
@@ -166,9 +168,10 @@ Body: {
 2. Import leads with source, country, and legal-basis fields by uploading CSV or pasting rows copied from Excel/Google Sheets.
 3. Create or select the Virtuprose offer you want to sell.
 4. Generate a campaign, review the copy, fix blockers, and approve it.
-5. Schedule the campaign through the sending account.
-6. Start the worker with `npm run worker`.
-7. Paste replies into `/inbox`, or connect an inbound parser to:
+5. Optional: upload and select a premium HTML design in the campaign **Email design** panel. The selected design must include `{{body_html}}` and an unsubscribe link.
+6. Schedule the campaign through the sending account.
+7. Start the worker with `npm run worker`.
+8. Paste replies into `/inbox`, or connect an inbound parser to:
 
 ```bash
 POST /api/inbound/replies

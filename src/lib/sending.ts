@@ -2,6 +2,7 @@ import {
   CampaignRecipientStatus,
   CampaignStatus,
   ConversationDirection,
+  EmailDesignValidationStatus,
   EmailEventType,
   EmailMessageStatus,
   LeadEventType,
@@ -23,6 +24,7 @@ import {
   ensureConversationForLead,
   recordConversationMessage
 } from "@/lib/conversations";
+import { renderCustomEmailHtml } from "@/lib/email-designs";
 import { emailQueue } from "@/lib/queue";
 import { prisma } from "@/lib/prisma";
 import { COMPLIANCE_SETTINGS_KEY, parseComplianceSettings } from "@/lib/settings";
@@ -185,7 +187,8 @@ export async function scheduleCampaignSend(campaignId: string, sendingAccountId:
       where: { id: campaignId },
       include: {
         recipients: { include: { lead: true }, orderBy: { createdAt: "asc" } },
-        steps: { orderBy: { stepOrder: "asc" } }
+        steps: { orderBy: { stepOrder: "asc" } },
+        selectedEmailDesignTemplate: true
       }
     });
     if (!campaign) throw new Error("Campaign not found.");
@@ -194,6 +197,12 @@ export async function scheduleCampaignSend(campaignId: string, sendingAccountId:
     }
     if (!campaign.recipients.length || !campaign.steps.length) {
       throw new Error("Campaign needs recipients and email steps before scheduling.");
+    }
+    if (
+      campaign.selectedEmailDesignTemplate &&
+      campaign.selectedEmailDesignTemplate.status !== EmailDesignValidationStatus.VALID
+    ) {
+      throw new Error("Selected email design has blockers. Fix it before scheduling.");
     }
 
     const existingActiveJob = await tx.sendJob.findFirst({
@@ -239,6 +248,16 @@ export async function scheduleCampaignSend(campaignId: string, sendingAccountId:
           senderName: account.fromName,
           unsubscribeUrl
         });
+        const renderedHtml = campaign.selectedEmailDesignTemplate
+          ? renderCustomEmailHtml({
+              designHtml: campaign.selectedEmailDesignTemplate.sanitizedHtml,
+              account,
+              subject: rendered.subject,
+              text: rendered.bodyText,
+              lead: recipient.lead,
+              unsubscribeUrl
+            })
+          : null;
         const queuedAt = new Date(now.getTime() + step.delayDays * 24 * 60 * 60 * 1000);
         const shouldSkip = blockedLeadStatuses.includes(recipient.lead.status);
         const message = await tx.emailMessage.create({
@@ -254,6 +273,9 @@ export async function scheduleCampaignSend(campaignId: string, sendingAccountId:
             recipientDomain: recipientDomain(recipient.lead.email),
             subject: rendered.subject,
             bodyText: rendered.bodyText,
+            bodyHtml: renderedHtml,
+            unsubscribeUrl,
+            emailDesignTemplateId: campaign.selectedEmailDesignTemplate?.id,
             queuedAt,
             skippedAt: shouldSkip ? now : null,
             error: shouldSkip ? "Lead is no longer contactable." : null
@@ -412,7 +434,9 @@ export async function processEmailMessage(messageId: string) {
       account: message.sendingAccount,
       to: message.recipientEmail,
       subject: message.subject,
-      text: message.bodyText
+      text: message.bodyText,
+      html: message.bodyHtml || undefined,
+      unsubscribeUrl: message.unsubscribeUrl || undefined
     });
 
     await prisma.$transaction(async (tx) => {
@@ -623,16 +647,51 @@ export async function sendDirectEmail({
   return sendEmail({ account, to, subject, text });
 }
 
-async function sendEmail({
+export async function sendEmailDesignTest({
   account,
   to,
   subject,
-  text
+  text,
+  html,
+  unsubscribeUrl
 }: {
   account: SendingAccount;
   to: string;
   subject: string;
   text: string;
+  html: string;
+  unsubscribeUrl?: string;
+}) {
+  const result = await sendEmail({ account, to, subject, text, html, unsubscribeUrl });
+
+  await prisma.emailEvent.create({
+    data: {
+      type: EmailEventType.TEST_SENT,
+      metadata: { to, dryRun: result.dryRun, providerMessageId: result.providerMessageId, customHtml: true }
+    }
+  });
+  await prisma.sendingAccount.update({
+    where: { id: account.id },
+    data: { lastTestAt: new Date(), lastError: null }
+  });
+
+  return result;
+}
+
+async function sendEmail({
+  account,
+  to,
+  subject,
+  text,
+  html,
+  unsubscribeUrl
+}: {
+  account: SendingAccount;
+  to: string;
+  subject: string;
+  text: string;
+  html?: string;
+  unsubscribeUrl?: string;
 }) {
   if (account.dryRun) {
     return {
@@ -662,7 +721,13 @@ async function sendEmail({
     replyTo: account.replyTo || account.fromEmail,
     subject,
     text,
-    html: renderBrandedEmailHtml({ account, subject, text }),
+    html: html || renderBrandedEmailHtml({ account, subject, text }),
+    headers: unsubscribeUrl
+      ? {
+          "List-Unsubscribe": `<${unsubscribeUrl}>`,
+          "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
+        }
+      : undefined,
     attachments: emailLogoAttachments()
   });
 
