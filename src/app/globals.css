@@ -1292,6 +1292,57 @@ tr:last-child td {
   overflow-wrap: anywhere;
 }
 
+.deal-contact-list {
+  display: grid;
+  gap: 8px;
+  padding: 10px 0 12px;
+  border-top: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.deal-contact-line {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(120px, max-content) minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+
+.deal-contact-label,
+.deal-contact-value {
+  min-width: 0;
+}
+
+.deal-contact-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.deal-contact-value {
+  justify-self: end;
+  color: var(--text-strong);
+  font-size: 13px;
+  font-weight: 720;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+a.deal-contact-value:hover,
+a.deal-contact-value:focus-visible {
+  color: var(--action-primary);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.deal-contact-value.muted-value {
+  color: var(--text-muted);
+  font-weight: 620;
+}
+
 .compact-empty {
   padding: 22px 12px;
 }
@@ -1517,6 +1568,7 @@ tr:last-child td {
   .reply-work-item,
   .reply-send-form,
   .deal-card-head,
+  .deal-contact-line,
   .profile-row {
     grid-template-columns: 1fr;
     display: grid;
@@ -1538,6 +1590,11 @@ tr:last-child td {
   }
 
   .profile-row span:last-child {
+    text-align: left;
+  }
+
+  .deal-contact-value {
+    justify-self: start;
     text-align: left;
   }
 

@@ -1,5 +1,5 @@
 import { DealStage, DealStatus, Prisma } from "@prisma/client";
-import { ArrowRight, Flame, MailCheck, Target, Trophy } from "lucide-react";
+import { ArrowRight, Flame, Mail, MailCheck, Phone, Target, Trophy } from "lucide-react";
 import Link from "next/link";
 import { pauseAiForLeadAction, resumeAiForLeadAction, updatePipelineDealStage } from "@/app/actions";
 import { PageHeader } from "@/components/page-header";
@@ -174,6 +174,21 @@ function DealCard({ deal }: { deal: DealWithRelations }) {
         <StatusBadge label={leadStatusLabels[deal.lead.status]} status={deal.lead.status} />
       </div>
 
+      <div className="deal-contact-list" aria-label="Lead contact details">
+        <ContactLine
+          icon={<Mail size={15} aria-hidden="true" />}
+          label="Email"
+          value={deal.lead.email}
+          href={`mailto:${deal.lead.email}`}
+        />
+        <ContactLine
+          icon={<Phone size={15} aria-hidden="true" />}
+          label="Phone / WhatsApp"
+          value={deal.lead.phoneE164 || "No phone saved"}
+          href={deal.lead.phoneE164 ? `tel:${deal.lead.phoneE164}` : undefined}
+        />
+      </div>
+
       <div className="profile-list">
         <ProfileRow label="Lead strength" value={`${deal.priorityScore}/100`} />
         <ProfileRow label="Where this lead stands" value={dealStatusLabels[deal.status]} />
@@ -224,6 +239,34 @@ function DealCard({ deal }: { deal: DealWithRelations }) {
         </button>
       </form>
     </article>
+  );
+}
+
+function ContactLine({
+  icon,
+  label,
+  value,
+  href
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  href?: string;
+}) {
+  return (
+    <div className="deal-contact-line">
+      <span className="deal-contact-label">
+        {icon}
+        {label}
+      </span>
+      {href ? (
+        <a href={href} className="deal-contact-value">
+          {value}
+        </a>
+      ) : (
+        <span className="deal-contact-value muted-value">{value}</span>
+      )}
+    </div>
   );
 }
 
