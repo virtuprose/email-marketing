@@ -4,6 +4,7 @@ import { AlertCircle, ArrowRight, ClipboardPaste, Download, FileUp, RefreshCw } 
 import { useRouter } from "next/navigation";
 import Papa from "papaparse";
 import { useMemo, useState } from "react";
+import { toast } from "sonner";
 import { StatusBadge } from "@/components/status-badge";
 import { FIELD_DEFINITIONS, guessMapping, type ImportMapping } from "@/lib/imports";
 
@@ -174,6 +175,7 @@ export function CsvImportClient() {
       },
       error: (parseError) => {
         setError(parseError.message);
+        toast.error("CSV could not be read", { description: parseError.message });
       }
     });
   }
@@ -192,6 +194,7 @@ export function CsvImportClient() {
     const parsed = parsePastedSpreadsheet(value);
     if (!parsed.ok) {
       setError(parsed.error);
+      toast.error("Paste format needs attention", { description: parsed.error });
       return;
     }
 
@@ -204,10 +207,12 @@ export function CsvImportClient() {
   async function checkRows() {
     setIsChecking(true);
     setError("");
+    toast.loading("Checking lead rows...", { id: "lead-import-check" });
 
     const source = await currentImportSource();
     if (!source) {
       setIsChecking(false);
+      toast.dismiss("lead-import-check");
       return;
     }
 
@@ -217,6 +222,10 @@ export function CsvImportClient() {
     if (!nextMapping.email) {
       setError("Map an email column before checking.");
       setIsChecking(false);
+      toast.error("Email column required", {
+        id: "lead-import-check",
+        description: "Map the email column before checking rows."
+      });
       return;
     }
 
@@ -231,8 +240,11 @@ export function CsvImportClient() {
       | null;
 
     if (!response.ok || !payload) {
-      setError(payload?.error ?? "Could not check these rows. Confirm the first row has column titles.");
+      const message =
+        payload?.error ?? "Could not check these rows. Confirm the first row has column titles.";
+      setError(message);
       setIsChecking(false);
+      toast.error("Rows could not be checked", { id: "lead-import-check", description: message });
       return;
     }
 
@@ -247,6 +259,10 @@ export function CsvImportClient() {
       )
     );
     setIsChecking(false);
+    toast.success("Rows checked", {
+      id: "lead-import-check",
+      description: `${payload.counters.importedRows + payload.counters.flaggedRows} rows can be imported.`
+    });
   }
 
   async function submitImport() {
@@ -259,6 +275,7 @@ export function CsvImportClient() {
       setIsSubmitting(false);
       return;
     }
+    toast.loading("Importing accepted rows...", { id: "lead-import-submit" });
 
     const formData = new FormData();
     formData.set("file", source.file);
@@ -271,12 +288,18 @@ export function CsvImportClient() {
 
     if (!response.ok) {
       const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-      setError(payload?.error ?? "Import failed. Check the rows and mapping.");
+      const message = payload?.error ?? "Import failed. Check the rows and mapping.";
+      setError(message);
       setIsSubmitting(false);
+      toast.error("Import failed", { id: "lead-import-submit", description: message });
       return;
     }
 
     const payload = (await response.json()) as { id: string };
+    toast.success("Leads imported", {
+      id: "lead-import-submit",
+      description: "Opening the import review now."
+    });
     router.push(`/leads/import/${payload.id}`);
   }
 
@@ -284,6 +307,7 @@ export function CsvImportClient() {
     if (mode === "csv") {
       if (!file) {
         setError("Choose a CSV file first.");
+        toast.error("Choose a CSV file first");
         return null;
       }
       const text = await file.text();
@@ -293,6 +317,7 @@ export function CsvImportClient() {
     const parsed = parsePastedSpreadsheet(pasteText);
     if (!parsed.ok) {
       setError(parsed.error);
+      toast.error("Paste format needs attention", { description: parsed.error });
       return null;
     }
 

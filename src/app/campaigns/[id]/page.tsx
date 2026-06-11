@@ -48,6 +48,8 @@ import {
   sendingAccountStatusLabels,
   sendJobStatusLabels
 } from "@/lib/status";
+import { CampaignStatusTimeline } from "@/components/campaign-status-timeline";
+import { EmailPreviewFrame } from "@/components/email-preview-frame";
 
 export const dynamic = "force-dynamic";
 
@@ -187,6 +189,8 @@ export default async function CampaignDetailPage({ params }: CampaignPageProps) 
           )}
         </Summary>
       </section>
+
+      <CampaignStatusTimeline status={campaign.status} />
 
       <div className="builder-layout" style={{ marginTop: 16 }}>
         <main className="stack">
@@ -516,8 +520,12 @@ function EmailDesignPanel({
                 <details className="advanced-inline email-design-preview" open={template.selected}>
                   <summary>Preview desktop and mobile</summary>
                   <div className="email-preview-grid">
-                    <EmailDesignFrame title={`${template.name} desktop preview`} html={html} mode="desktop" />
-                    <EmailDesignFrame title={`${template.name} mobile preview`} html={html} mode="mobile" />
+                    <EmailPreviewFrame
+                      title={`${template.name} desktop preview`}
+                      html={html}
+                      mode="desktop"
+                    />
+                    <EmailPreviewFrame title={`${template.name} mobile preview`} html={html} mode="mobile" />
                   </div>
                 </details>
 
@@ -583,23 +591,6 @@ function EmailDesignPanel({
         )}
       </div>
     </section>
-  );
-}
-
-function EmailDesignFrame({
-  title,
-  html,
-  mode
-}: {
-  title: string;
-  html: string;
-  mode: "desktop" | "mobile";
-}) {
-  return (
-    <div className={`email-design-frame-shell email-design-frame-${mode}`}>
-      <span>{mode === "desktop" ? "Desktop" : "Mobile"}</span>
-      <iframe title={title} srcDoc={html} sandbox="" />
-    </div>
   );
 }
 

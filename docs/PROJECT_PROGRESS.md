@@ -1,6 +1,6 @@
 # Virtuprose Sales Assistant Project Progress
 
-Last updated: 2026-06-09
+Last updated: 2026-06-11
 
 ## Product State
 
@@ -18,6 +18,7 @@ Virtuprose Sales Assistant is an internal single-owner platform for:
 ## Completed
 
 - Next.js dashboard with simplified owner-friendly UI.
+- Premium shadcn/Tailwind UI foundation with a collapsible sales-studio shell, route loading/error states, toasts, reusable UI primitives, and cleaner campaign/inbox/pipeline/import layouts.
 - Lead import with CSV upload, Excel/Google Sheets paste, mapping, validation preview, and downloadable example CSV.
 - Lead database with email and WhatsApp fields.
 - Offer/service library.
@@ -102,6 +103,7 @@ Pending/verify on VPS:
 - SMTP and IMAP authentication are verified for `info@virtuprose.com`.
 - Existing UI and workflow pages are available.
 - `/api/imports/preview` checks pasted or uploaded lead rows before import without mutating the database.
+- Main authenticated routes now share the Virtuprose Sales Studio shell with grouped navigation, quick actions, setup/AI status, improved empty states, and clearer safety/progress surfaces.
 
 ## What Is Not Fully Ready Yet
 

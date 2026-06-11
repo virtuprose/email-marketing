@@ -100,6 +100,8 @@ curl http://localhost:3000/api/health
 
 Campaign sending, WhatsApp Cloud API, the AI Assistant control center, owner-friendly UI, and VPS deployment are implemented. Production SMTP and IMAP are configured for `info@virtuprose.com`; keep volume low until real inbox delivery, SPF/DKIM/DMARC, and reply capture are verified.
 
+The platform UI now uses a premium shadcn/Tailwind foundation with a Virtuprose Sales Studio shell, grouped navigation, loading/error states, Sonner toasts, reusable UI primitives, and polished campaign, import, inbox, WhatsApp, AI assistant, and hot-lead workflows.
+
 ## Campaign Scope
 
 - Campaign list and campaign builder
