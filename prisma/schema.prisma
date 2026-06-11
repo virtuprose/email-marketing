@@ -530,7 +530,6 @@ model Campaign {
   updatedAt                     DateTime              @updatedAt @map("updated_at")
   offer                         Offer                 @relation(fields: [offerId], references: [id], onDelete: Restrict)
   selectedEmailDesignTemplate   EmailDesignTemplate?  @relation("CampaignSelectedEmailDesign", fields: [selectedEmailDesignTemplateId], references: [id], onDelete: SetNull)
-  emailDesignTemplates          EmailDesignTemplate[] @relation("CampaignEmailDesignTemplates")
   steps                         CampaignStep[]
   variants                      CampaignVariant[]
   recipients                    CampaignRecipient[]
@@ -553,23 +552,23 @@ model Campaign {
 
 model EmailDesignTemplate {
   id                  String                      @id @default(cuid())
-  campaignId          String                      @map("campaign_id")
+  slug                String                      @unique
   name                String
+  description         String                      @default("")
   originalHtml        String                      @map("original_html")
   sanitizedHtml       String                      @map("sanitized_html")
   status              EmailDesignValidationStatus @default(BLOCKED)
   warnings            String[]                    @default([])
   errors              String[]                    @default([])
-  selected            Boolean                     @default(false)
+  active              Boolean                     @default(true)
+  builtIn             Boolean                     @default(false) @map("built_in")
   createdAt           DateTime                    @default(now()) @map("created_at")
   updatedAt           DateTime                    @updatedAt @map("updated_at")
-  campaign            Campaign                    @relation("CampaignEmailDesignTemplates", fields: [campaignId], references: [id], onDelete: Cascade)
   selectedByCampaigns Campaign[]                  @relation("CampaignSelectedEmailDesign")
   messages            EmailMessage[]
 
-  @@index([campaignId])
   @@index([status])
-  @@index([selected])
+  @@index([active])
   @@map("email_design_templates")
 }
 

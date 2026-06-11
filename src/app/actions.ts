@@ -58,10 +58,12 @@ import {
   settingsFromForm
 } from "@/lib/ai-assistant";
 import {
-  prepareEmailDesignHtml,
-  renderCustomEmailHtml,
-  MAX_EMAIL_DESIGNS_PER_CAMPAIGN
-} from "@/lib/email-designs";
+  EMAIL_DESIGN_SAMPLE_BODY,
+  EMAIL_DESIGN_SAMPLE_LEAD,
+  EMAIL_DESIGN_SAMPLE_SUBJECT,
+  ensureBuiltInEmailDesignTemplate,
+  renderEmailDesignTemplateHtml
+} from "@/lib/email-design-template-library";
 import { COMPLIANCE_SETTINGS_KEY, parseComplianceSettings } from "@/lib/settings";
 import { generateDefaultMeetingAvailability } from "@/lib/meeting-availability";
 import {
@@ -148,11 +150,17 @@ const testEmailSchema = z.object({
 
 const emailDesignTemplateIdSchema = z.object({
   campaignId: z.string().min(1),
-  templateId: z.string().min(1)
+  templateId: z.string().optional().or(z.literal(""))
 });
 
 const emailDesignTestSchema = z.object({
   campaignId: z.string().min(1),
+  templateId: z.string().optional().or(z.literal("")),
+  sendingAccountId: z.string().min(1),
+  to: z.string().email()
+});
+
+const globalEmailDesignTestSchema = z.object({
   templateId: z.string().min(1),
   sendingAccountId: z.string().min(1),
   to: z.string().email()
@@ -361,20 +369,22 @@ async function buildCampaignReviewItems(
 
   const selectedDesign = campaign.selectedEmailDesignTemplate;
   if (selectedDesign) {
-    const hasErrors = selectedDesign.status === EmailDesignValidationStatus.BLOCKED;
+    const hasErrors = !selectedDesign.active || selectedDesign.status === EmailDesignValidationStatus.BLOCKED;
     items.push({
       key: "email_design",
-      label: "Custom email design",
+      label: "Email design template",
       severity: hasErrors
         ? CampaignReviewSeverity.BLOCK
         : selectedDesign.warnings.length
           ? CampaignReviewSeverity.WARNING
           : CampaignReviewSeverity.PASS,
       message: hasErrors
-        ? `Fix custom HTML design: ${selectedDesign.errors.join("; ")}`
+        ? `Choose an active valid email design.${
+            selectedDesign.errors.length ? ` ${selectedDesign.errors.join("; ")}` : ""
+          }`
         : selectedDesign.warnings.length
-          ? `Custom design can send, but review: ${selectedDesign.warnings.join("; ")}`
-          : "Selected custom email design is valid."
+          ? `Selected design can send, but review: ${selectedDesign.warnings.join("; ")}`
+          : "Selected email design template is valid."
     });
   }
 
@@ -1115,89 +1125,44 @@ export async function updateCampaignContent(formData: FormData) {
   revalidatePath(`/campaigns/${campaignId}`);
 }
 
-export async function uploadCampaignEmailDesign(formData: FormData) {
-  const campaignId = z.string().min(1).parse(formData.get("campaignId"));
-  const name = String(formData.get("name") ?? "").trim();
-  const file = formData.get("htmlFile");
-
-  if (!(file instanceof File) || file.size === 0) {
-    throw new Error("Upload a self-contained .html file.");
-  }
-  if (!file.name.toLowerCase().endsWith(".html")) {
-    throw new Error("Only .html files are supported for email designs.");
-  }
-
-  const html = await file.text();
-  const prepared = prepareEmailDesignHtml(html);
-  const displayName = name || file.name.replace(/\.html$/i, "");
-
-  await prisma.$transaction(async (tx) => {
-    await assertCampaignDesignEditable(tx, campaignId);
-
-    const existingCount = await tx.emailDesignTemplate.count({ where: { campaignId } });
-    if (existingCount >= MAX_EMAIL_DESIGNS_PER_CAMPAIGN) {
-      throw new Error(`You can upload up to ${MAX_EMAIL_DESIGNS_PER_CAMPAIGN} email designs per campaign.`);
-    }
-
-    const template = await tx.emailDesignTemplate.create({
-      data: {
-        campaignId,
-        name: displayName,
-        originalHtml: html,
-        sanitizedHtml: prepared.sanitizedHtml,
-        status: prepared.status,
-        warnings: prepared.warnings,
-        errors: prepared.errors
-      }
-    });
-
-    await replaceCampaignReview(campaignId, tx);
-    await tx.auditLog.create({
-      data: {
-        action: "campaign.email_design_uploaded",
-        entityType: "email_design_template",
-        entityId: template.id,
-        metadata: {
-          campaignId,
-          status: prepared.status,
-          warnings: prepared.warnings,
-          errors: prepared.errors
-        }
-      }
-    });
-  });
-
-  revalidatePath(`/campaigns/${campaignId}`);
-}
-
 export async function selectCampaignEmailDesign(formData: FormData) {
   const parsed = emailDesignTemplateIdSchema.parse({
     campaignId: formData.get("campaignId"),
     templateId: formData.get("templateId")
   });
+  const templateId = parsed.templateId?.trim() || "";
 
   await prisma.$transaction(async (tx) => {
     await assertCampaignDesignEditable(tx, parsed.campaignId);
 
-    const template = await tx.emailDesignTemplate.findFirst({
-      where: { id: parsed.templateId, campaignId: parsed.campaignId }
-    });
-    if (!template) throw new Error("Email design was not found.");
-    if (template.status !== EmailDesignValidationStatus.VALID) {
-      throw new Error("Fix this email design before selecting it.");
+    if (!templateId) {
+      await tx.campaign.update({
+        where: { id: parsed.campaignId },
+        data: { selectedEmailDesignTemplateId: null }
+      });
+      await replaceCampaignReview(parsed.campaignId, tx);
+      await tx.auditLog.create({
+        data: {
+          action: "campaign.email_design_default_selected",
+          entityType: "campaign",
+          entityId: parsed.campaignId
+        }
+      });
+      return;
     }
 
-    await tx.emailDesignTemplate.updateMany({
-      where: { campaignId: parsed.campaignId },
-      data: { selected: false }
+    await ensureBuiltInEmailDesignTemplate(tx);
+    const template = await tx.emailDesignTemplate.findFirst({
+      where: { id: templateId, active: true }
     });
-    await tx.emailDesignTemplate.update({
-      where: { id: parsed.templateId },
-      data: { selected: true }
-    });
+    if (!template) throw new Error("Email design template was not found.");
+    if (template.status !== EmailDesignValidationStatus.VALID) {
+      throw new Error("Choose a valid email design template before selecting it.");
+    }
+
     await tx.campaign.update({
       where: { id: parsed.campaignId },
-      data: { selectedEmailDesignTemplateId: parsed.templateId }
+      data: { selectedEmailDesignTemplateId: template.id }
     });
 
     await replaceCampaignReview(parsed.campaignId, tx);
@@ -1205,67 +1170,14 @@ export async function selectCampaignEmailDesign(formData: FormData) {
       data: {
         action: "campaign.email_design_selected",
         entityType: "email_design_template",
-        entityId: parsed.templateId,
+        entityId: template.id,
         metadata: { campaignId: parsed.campaignId }
       }
     });
   });
 
   revalidatePath(`/campaigns/${parsed.campaignId}`);
-}
-
-export async function useDefaultCampaignEmailDesign(formData: FormData) {
-  const campaignId = z.string().min(1).parse(formData.get("campaignId"));
-
-  await prisma.$transaction(async (tx) => {
-    await assertCampaignDesignEditable(tx, campaignId);
-    await tx.emailDesignTemplate.updateMany({ where: { campaignId }, data: { selected: false } });
-    await tx.campaign.update({ where: { id: campaignId }, data: { selectedEmailDesignTemplateId: null } });
-    await replaceCampaignReview(campaignId, tx);
-    await tx.auditLog.create({
-      data: {
-        action: "campaign.email_design_default_selected",
-        entityType: "campaign",
-        entityId: campaignId
-      }
-    });
-  });
-
-  revalidatePath(`/campaigns/${campaignId}`);
-}
-
-export async function removeCampaignEmailDesign(formData: FormData) {
-  const parsed = emailDesignTemplateIdSchema.parse({
-    campaignId: formData.get("campaignId"),
-    templateId: formData.get("templateId")
-  });
-
-  await prisma.$transaction(async (tx) => {
-    await assertCampaignDesignEditable(tx, parsed.campaignId);
-    const template = await tx.emailDesignTemplate.findFirst({
-      where: { id: parsed.templateId, campaignId: parsed.campaignId }
-    });
-    if (!template) throw new Error("Email design was not found.");
-
-    if (template.selected) {
-      await tx.campaign.update({
-        where: { id: parsed.campaignId },
-        data: { selectedEmailDesignTemplateId: null }
-      });
-    }
-    await tx.emailDesignTemplate.delete({ where: { id: parsed.templateId } });
-    await replaceCampaignReview(parsed.campaignId, tx);
-    await tx.auditLog.create({
-      data: {
-        action: "campaign.email_design_removed",
-        entityType: "email_design_template",
-        entityId: parsed.templateId,
-        metadata: { campaignId: parsed.campaignId }
-      }
-    });
-  });
-
-  revalidatePath(`/campaigns/${parsed.campaignId}`);
+  revalidatePath("/email-design-templates");
 }
 
 export async function sendCampaignEmailDesignTest(formData: FormData) {
@@ -1275,8 +1187,9 @@ export async function sendCampaignEmailDesignTest(formData: FormData) {
     sendingAccountId: formData.get("sendingAccountId"),
     to: formData.get("to")
   });
+  const templateId = parsed.templateId?.trim() || "";
 
-  const [campaign, template, account, compliance] = await Promise.all([
+  const [campaign, account, compliance] = await Promise.all([
     prisma.campaign.findUnique({
       where: { id: parsed.campaignId },
       include: {
@@ -1284,18 +1197,11 @@ export async function sendCampaignEmailDesignTest(formData: FormData) {
         recipients: { include: { lead: true }, take: 1 }
       }
     }),
-    prisma.emailDesignTemplate.findFirst({
-      where: { id: parsed.templateId, campaignId: parsed.campaignId }
-    }),
     prisma.sendingAccount.findUnique({ where: { id: parsed.sendingAccountId } }),
     getComplianceSettings()
   ]);
 
   if (!campaign || !campaign.steps.length) throw new Error("Campaign email copy is missing.");
-  if (!template) throw new Error("Email design was not found.");
-  if (template.status !== EmailDesignValidationStatus.VALID) {
-    throw new Error("Fix this email design before sending a test.");
-  }
   if (!account) throw new Error("Sending account not found.");
 
   const sampleLead: Pick<Lead, "firstName" | "company" | "email"> = campaign.recipients[0]?.lead ?? {
@@ -1304,21 +1210,38 @@ export async function sendCampaignEmailDesignTest(formData: FormData) {
     email: parsed.to
   };
   const unsubscribeUrl = compliance.unsubscribeUrl || `${appBaseUrl()}/unsubscribe/test-preview`;
-  const rendered = renderEmailCopy({
+  let rendered = renderEmailCopy({
     subject: campaign.steps[0].subject,
     body: campaign.steps[0].body,
     lead: sampleLead,
     senderName: account.fromName,
     unsubscribeUrl
   });
-  const html = renderCustomEmailHtml({
-    designHtml: template.sanitizedHtml,
-    account,
-    subject: rendered.subject,
-    text: rendered.bodyText,
-    lead: sampleLead,
-    unsubscribeUrl
-  });
+  let html: string | undefined;
+  let selectedTemplateId: string | null = null;
+
+  if (templateId) {
+    await ensureBuiltInEmailDesignTemplate();
+    const template = await prisma.emailDesignTemplate.findFirst({
+      where: { id: templateId, active: true }
+    });
+    if (!template) throw new Error("Email design template was not found.");
+    if (template.status !== EmailDesignValidationStatus.VALID) {
+      throw new Error("Choose a valid email design template before sending a test.");
+    }
+
+    const designed = renderEmailDesignTemplateHtml({
+      template,
+      subject: campaign.steps[0].subject,
+      body: campaign.steps[0].body,
+      lead: sampleLead,
+      senderName: account.fromName,
+      unsubscribeUrl
+    });
+    rendered = { subject: designed.subject, bodyText: designed.bodyText };
+    html = designed.bodyHtml;
+    selectedTemplateId = template.id;
+  }
 
   await sendEmailDesignTest({
     account,
@@ -1332,13 +1255,71 @@ export async function sendCampaignEmailDesignTest(formData: FormData) {
   await prisma.auditLog.create({
     data: {
       action: "campaign.email_design_test_sent",
-      entityType: "email_design_template",
-      entityId: template.id,
-      metadata: { campaignId: campaign.id, to: parsed.to, dryRun: account.dryRun }
+      entityType: selectedTemplateId ? "email_design_template" : "campaign",
+      entityId: selectedTemplateId ?? campaign.id,
+      metadata: {
+        campaignId: campaign.id,
+        to: parsed.to,
+        dryRun: account.dryRun,
+        templateId: selectedTemplateId
+      }
     }
   });
 
   revalidatePath(`/campaigns/${parsed.campaignId}`);
+}
+
+export async function sendGlobalEmailDesignTest(formData: FormData) {
+  const parsed = globalEmailDesignTestSchema.parse({
+    templateId: formData.get("templateId"),
+    sendingAccountId: formData.get("sendingAccountId"),
+    to: formData.get("to")
+  });
+
+  await ensureBuiltInEmailDesignTemplate();
+  const [template, account, compliance] = await Promise.all([
+    prisma.emailDesignTemplate.findFirst({
+      where: { id: parsed.templateId, active: true }
+    }),
+    prisma.sendingAccount.findUnique({ where: { id: parsed.sendingAccountId } }),
+    getComplianceSettings()
+  ]);
+
+  if (!template) throw new Error("Email design template was not found.");
+  if (template.status !== EmailDesignValidationStatus.VALID) {
+    throw new Error("Choose a valid email design template before sending a test.");
+  }
+  if (!account) throw new Error("Sending account not found.");
+
+  const unsubscribeUrl = compliance.unsubscribeUrl || `${appBaseUrl()}/unsubscribe/test-preview`;
+  const rendered = renderEmailDesignTemplateHtml({
+    template,
+    subject: EMAIL_DESIGN_SAMPLE_SUBJECT,
+    body: EMAIL_DESIGN_SAMPLE_BODY,
+    lead: { ...EMAIL_DESIGN_SAMPLE_LEAD, email: parsed.to },
+    senderName: account.fromName,
+    unsubscribeUrl
+  });
+
+  await sendEmailDesignTest({
+    account,
+    to: parsed.to,
+    subject: rendered.subject,
+    text: rendered.bodyText,
+    html: rendered.bodyHtml,
+    unsubscribeUrl
+  });
+
+  await prisma.auditLog.create({
+    data: {
+      action: "email_design_template.test_sent",
+      entityType: "email_design_template",
+      entityId: template.id,
+      metadata: { to: parsed.to, dryRun: account.dryRun }
+    }
+  });
+
+  revalidatePath("/email-design-templates");
 }
 
 export async function confirmCampaignLeadCompliance(formData: FormData) {

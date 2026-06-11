@@ -11,6 +11,7 @@ import {
   MessageCircle,
   PanelLeftClose,
   PanelLeftOpen,
+  Palette,
   Plus,
   Send,
   Settings,
@@ -28,6 +29,7 @@ const navGroups = [
     items: [
       { href: "/", label: "Today", icon: Home, exact: true },
       { href: "/campaigns", label: "Campaign Studio", icon: Send },
+      { href: "/email-design-templates", label: "Email Designs", icon: Palette },
       { href: "/leads", label: "Leads", icon: UsersRound },
       { href: "/pipeline", label: "Hot Leads", icon: Flame }
     ]

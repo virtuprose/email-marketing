@@ -1,6 +1,10 @@
 import { EmailDesignValidationStatus } from "@prisma/client";
 import { describe, expect, it } from "vitest";
-import { prepareEmailDesignHtml, renderCustomEmailHtml } from "./email-designs";
+import {
+  VIRTUPROSE_SIGNATURE_PREMIUM_HTML,
+  prepareEmailDesignHtml,
+  renderCustomEmailHtml
+} from "./email-designs";
 
 const validHtml = `<!doctype html>
 <html>
@@ -64,6 +68,33 @@ describe("email design templates", () => {
     expect(rendered).toContain("Book here:");
     expect(rendered).toContain("https://virtuprose.com");
     expect(rendered).toContain("https://sales.virtuprose.com/unsubscribe/test");
+    expect(rendered).not.toContain("{{body_html}}");
+  });
+
+  it("keeps the built-in Virtuprose premium template send-ready", () => {
+    const prepared = prepareEmailDesignHtml(VIRTUPROSE_SIGNATURE_PREMIUM_HTML);
+
+    expect(prepared.status).toBe(EmailDesignValidationStatus.VALID);
+    expect(prepared.errors).toEqual([]);
+    expect(prepared.sanitizedHtml).toContain("{{body_html}}");
+    expect(prepared.sanitizedHtml).toContain("{{unsubscribe_url}}");
+
+    const rendered = renderCustomEmailHtml({
+      designHtml: prepared.sanitizedHtml,
+      account: { fromName: "Virtuprose" },
+      subject: "Automation idea",
+      text: "Hi Sara,\n\nCould we discuss one process to improve?",
+      lead: {
+        firstName: "Sara",
+        company: "Growth Studio",
+        email: "sara@example.com"
+      },
+      unsubscribeUrl: "https://sales.virtuprose.com/unsubscribe/test"
+    });
+
+    expect(rendered).toContain("Growth Studio");
+    expect(rendered).toContain("Could we discuss one process");
+    expect(rendered).toContain("sara@example.com");
     expect(rendered).not.toContain("{{body_html}}");
   });
 });

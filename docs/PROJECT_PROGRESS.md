@@ -23,6 +23,7 @@ Virtuprose Sales Assistant is an internal single-owner platform for:
 - Lead database with email and WhatsApp fields.
 - Offer/service library.
 - Email campaign builder and queue foundation.
+- Global Email Design Templates module with the built-in Virtuprose Signature Premium template, desktop/mobile preview, test-send flow, and campaign-level selection.
 - Meta WhatsApp Cloud API migration from Twilio.
 - WhatsApp template storage, approval submission, status sync, test-send flow, and campaign flow.
 - WhatsApp safety gates for consent, opt-out, STOP language, send caps, and owner approval.

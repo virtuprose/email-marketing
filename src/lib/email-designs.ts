@@ -2,11 +2,142 @@ import { EmailDesignValidationStatus, type Lead, type SendingAccount } from "@pr
 import juice from "juice";
 import sanitizeHtml from "sanitize-html";
 
-export const MAX_EMAIL_DESIGNS_PER_CAMPAIGN = 3;
 export const MAX_EMAIL_DESIGN_BYTES = 200_000;
+export const BUILT_IN_EMAIL_DESIGN_SLUG = "virtuprose-signature-premium";
+export const BUILT_IN_EMAIL_DESIGN_NAME = "Virtuprose Signature Premium";
+export const BUILT_IN_EMAIL_DESIGN_DESCRIPTION =
+  "A premium Virtuprose email-safe template with warm canvas, teal accents, clear CTA, service value block, and compliant footer.";
 
 const REQUIRED_BODY_TOKEN = "{{body_html}}";
 const UNSUBSCRIBE_TOKEN = "{{unsubscribe_url}}";
+
+export const VIRTUPROSE_SIGNATURE_PREMIUM_HTML = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{preheader}}</title>
+    <style>
+      @media only screen and (max-width: 640px) {
+        .vp-shell { width: 100% !important; }
+        .vp-pad { padding: 24px 18px !important; }
+        .vp-hero-title { font-size: 28px !important; line-height: 1.12 !important; }
+        .vp-stack { display: block !important; width: 100% !important; }
+        .vp-service { padding-bottom: 12px !important; }
+      }
+    </style>
+  </head>
+  <body style="margin:0;padding:0;background:#f7f1e8;font-family:Arial,Helvetica,sans-serif;color:#101b1d;">
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">{{preheader}}</div>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f7f1e8;margin:0;padding:0;">
+      <tr>
+        <td align="center" style="padding:34px 12px;">
+          <table role="presentation" class="vp-shell" width="640" cellspacing="0" cellpadding="0" border="0" style="width:640px;max-width:640px;background:#fffaf0;border:1px solid #e1d6c5;border-radius:24px;overflow:hidden;">
+            <tr>
+              <td class="vp-pad" style="padding:30px 34px 20px;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                  <tr>
+                    <td align="left" style="vertical-align:middle;">
+                      <table role="presentation" cellspacing="0" cellpadding="0" border="0">
+                        <tr>
+                          <td align="center" style="width:42px;height:42px;background:#062224;border-radius:14px;color:#2dd4da;font-size:24px;font-weight:800;line-height:42px;">V</td>
+                          <td style="padding-left:12px;">
+                            <div style="font-size:17px;line-height:1.2;font-weight:800;color:#101b1d;">Virtuprose</div>
+                            <div style="font-size:12px;line-height:1.4;color:#706a61;">AI sales and automation studio</div>
+                          </td>
+                        </tr>
+                      </table>
+                    </td>
+                    <td align="right" style="vertical-align:middle;color:#087b7f;font-size:12px;font-weight:700;">Premium outreach</td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+
+            <tr>
+              <td class="vp-pad" style="padding:10px 34px 26px;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#102225;border-radius:22px;">
+                  <tr>
+                    <td style="padding:28px 28px 30px;">
+                      <div style="font-size:13px;line-height:1.4;color:#80f0ee;font-weight:700;">Built for practical growth</div>
+                      <h1 class="vp-hero-title" style="margin:10px 0 12px;color:#ffffff;font-size:34px;line-height:1.08;font-weight:800;">A clearer way to reduce manual work at {{company}}</h1>
+                      <p style="margin:0;color:#d6ece8;font-size:15px;line-height:1.65;">A short note from {{sender_name}} about using automation and AI-assisted workflows to improve follow-ups, operations, reporting, and customer communication.</p>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+
+            <tr>
+              <td class="vp-pad" style="padding:0 34px 14px;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#ffffff;border:1px solid #eadfce;border-radius:20px;">
+                  <tr>
+                    <td style="padding:26px 28px;">
+                      {{body_html}}
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+
+            <tr>
+              <td class="vp-pad" style="padding:8px 34px 22px;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                  <tr>
+                    <td class="vp-stack vp-service" width="33.33%" style="vertical-align:top;padding-right:10px;">
+                      <div style="border:1px solid #eadfce;border-radius:18px;background:#fffdf8;padding:16px;">
+                        <div style="color:#087b7f;font-size:12px;font-weight:800;">01</div>
+                        <div style="margin-top:8px;color:#101b1d;font-size:15px;line-height:1.35;font-weight:800;">Workflow clarity</div>
+                        <div style="margin-top:7px;color:#706a61;font-size:13px;line-height:1.5;">Map slow manual steps and turn them into simple operating flows.</div>
+                      </div>
+                    </td>
+                    <td class="vp-stack vp-service" width="33.33%" style="vertical-align:top;padding-right:10px;">
+                      <div style="border:1px solid #eadfce;border-radius:18px;background:#fffdf8;padding:16px;">
+                        <div style="color:#087b7f;font-size:12px;font-weight:800;">02</div>
+                        <div style="margin-top:8px;color:#101b1d;font-size:15px;line-height:1.35;font-weight:800;">AI-assisted sales</div>
+                        <div style="margin-top:7px;color:#706a61;font-size:13px;line-height:1.5;">Reply faster, qualify enquiries, and move serious leads to meetings.</div>
+                      </div>
+                    </td>
+                    <td class="vp-stack" width="33.33%" style="vertical-align:top;">
+                      <div style="border:1px solid #eadfce;border-radius:18px;background:#fffdf8;padding:16px;">
+                        <div style="color:#087b7f;font-size:12px;font-weight:800;">03</div>
+                        <div style="margin-top:8px;color:#101b1d;font-size:15px;line-height:1.35;font-weight:800;">Clean delivery</div>
+                        <div style="margin-top:7px;color:#706a61;font-size:13px;line-height:1.5;">Ship useful automation without overcomplicating your team workflow.</div>
+                      </div>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+
+            <tr>
+              <td class="vp-pad" style="padding:0 34px 30px;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#e8fbf8;border:1px solid #bfe9e4;border-radius:20px;">
+                  <tr>
+                    <td class="vp-stack" style="padding:20px 22px;vertical-align:middle;">
+                      <div style="color:#102225;font-size:16px;line-height:1.4;font-weight:800;">Want us to review the best automation opportunity?</div>
+                      <div style="margin-top:5px;color:#52615f;font-size:13px;line-height:1.55;">Reply with one process you want improved, or book a short conversation with the Virtuprose team.</div>
+                    </td>
+                    <td class="vp-stack" align="right" style="padding:20px 22px;vertical-align:middle;">
+                      <a href="https://virtuprose.com" style="display:inline-block;background:#087b7f;color:#ffffff;text-decoration:none;border-radius:999px;padding:12px 18px;font-size:14px;font-weight:800;">Book a quick call</a>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+
+            <tr>
+              <td style="background:#f1eadf;padding:22px 34px;">
+                <p style="margin:0 0 8px;color:#706a61;font-size:12px;line-height:1.6;">Sent to {{recipient_email}} by {{sender_name}} from Virtuprose.</p>
+                <p style="margin:0;color:#706a61;font-size:12px;line-height:1.6;">You can opt out anytime: <a href="{{unsubscribe_url}}" style="color:#087b7f;text-decoration:underline;">unsubscribe here</a>.</p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
 
 const blockedPatterns: Array<{ pattern: RegExp; message: string }> = [
   { pattern: /<script\b/i, message: "Remove script tags. Email clients block scripts." },
@@ -217,6 +348,7 @@ function sanitizeEmailHtml(html: string) {
     },
     allowedSchemes: ["http", "https", "mailto", "tel", "cid", "data"],
     allowProtocolRelative: false,
+    allowVulnerableTags: true,
     transformTags: {
       a: sanitizeHtml.simpleTransform("a", { target: "_blank", rel: "noopener noreferrer" }, true)
     }

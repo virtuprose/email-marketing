@@ -9,11 +9,10 @@ import {
   ArrowLeft,
   CheckCircle2,
   PauseCircle,
+  Palette,
   PlayCircle,
   Send,
   ShieldAlert,
-  Trash2,
-  Upload,
   WandSparkles
 } from "lucide-react";
 import Link from "next/link";
@@ -27,19 +26,21 @@ import {
   scheduleApprovedCampaign,
   selectCampaignEmailDesign,
   sendCampaignEmailDesignTest,
-  uploadCampaignEmailDesign,
-  removeCampaignEmailDesign,
-  useDefaultCampaignEmailDesign,
   updateCampaignContent
 } from "@/app/actions";
+import { EmailTemplatePreviewDialog } from "@/components/email-template-preview-dialog";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
 import { objectiveLabels } from "@/lib/campaigns";
-import { renderCustomEmailHtml } from "@/lib/email-designs";
+import {
+  getActiveEmailDesignTemplates,
+  renderEmailDesignTemplateHtml,
+  renderPlainEmailPreviewHtml
+} from "@/lib/email-design-template-library";
 import { formatDate, formatNumber } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
 import { COMPLIANCE_SETTINGS_KEY, parseComplianceSettings } from "@/lib/settings";
-import { ensureDefaultSendingAccount, renderEmailCopy } from "@/lib/sending";
+import { ensureDefaultSendingAccount } from "@/lib/sending";
 import {
   campaignReviewSeverityLabels,
   campaignStatusLabels,
@@ -49,7 +50,6 @@ import {
   sendJobStatusLabels
 } from "@/lib/status";
 import { CampaignStatusTimeline } from "@/components/campaign-status-timeline";
-import { EmailPreviewFrame } from "@/components/email-preview-frame";
 
 export const dynamic = "force-dynamic";
 
@@ -61,7 +61,6 @@ const campaignDetailInclude = {
   offer: true,
   steps: { orderBy: { stepOrder: "asc" } },
   selectedEmailDesignTemplate: true,
-  emailDesignTemplates: { orderBy: { createdAt: "asc" } },
   reviews: { orderBy: [{ severity: "asc" }, { createdAt: "asc" }] },
   aiGenerations: { orderBy: { createdAt: "desc" }, take: 1 },
   recipients: {
@@ -80,34 +79,43 @@ const emailMessageInclude = {
   lead: true
 } satisfies Prisma.EmailMessageInclude;
 
-type CampaignDetail = Prisma.CampaignGetPayload<{ include: typeof campaignDetailInclude }>;
-type SendJobDetail = Prisma.SendJobGetPayload<{ include: typeof sendJobInclude }>;
-type EmailMessageDetail = Prisma.EmailMessageGetPayload<{ include: typeof emailMessageInclude }>;
+type CampaignDetail = Prisma.CampaignGetPayload<{
+  include: typeof campaignDetailInclude;
+}>;
+type SendJobDetail = Prisma.SendJobGetPayload<{
+  include: typeof sendJobInclude;
+}>;
+type EmailMessageDetail = Prisma.EmailMessageGetPayload<{
+  include: typeof emailMessageInclude;
+}>;
+type EmailDesignLibraryTemplate = Awaited<ReturnType<typeof getActiveEmailDesignTemplates>>[number];
 
 export default async function CampaignDetailPage({ params }: CampaignPageProps) {
   const { id } = await params;
   await ensureDefaultSendingAccount();
 
-  const [campaign, complianceSetting, sendingAccounts, sendJobs, recentMessages] = await Promise.all([
-    prisma.campaign.findUnique({
-      where: { id },
-      include: campaignDetailInclude
-    }),
-    prisma.setting.findUnique({ where: { key: COMPLIANCE_SETTINGS_KEY } }),
-    prisma.sendingAccount.findMany({ orderBy: { createdAt: "asc" } }),
-    prisma.sendJob.findMany({
-      where: { campaignId: id },
-      include: sendJobInclude,
-      orderBy: { createdAt: "desc" },
-      take: 5
-    }),
-    prisma.emailMessage.findMany({
-      where: { campaignId: id },
-      include: emailMessageInclude,
-      orderBy: { queuedAt: "desc" },
-      take: 20
-    })
-  ]);
+  const [campaign, complianceSetting, sendingAccounts, sendJobs, recentMessages, emailDesignTemplates] =
+    await Promise.all([
+      prisma.campaign.findUnique({
+        where: { id },
+        include: campaignDetailInclude
+      }),
+      prisma.setting.findUnique({ where: { key: COMPLIANCE_SETTINGS_KEY } }),
+      prisma.sendingAccount.findMany({ orderBy: { createdAt: "asc" } }),
+      prisma.sendJob.findMany({
+        where: { campaignId: id },
+        include: sendJobInclude,
+        orderBy: { createdAt: "desc" },
+        take: 5
+      }),
+      prisma.emailMessage.findMany({
+        where: { campaignId: id },
+        include: emailMessageInclude,
+        orderBy: { queuedAt: "desc" },
+        take: 20
+      }),
+      getActiveEmailDesignTemplates()
+    ]);
 
   if (!campaign) notFound();
 
@@ -136,16 +144,18 @@ export default async function CampaignDetailPage({ params }: CampaignPageProps) 
     CampaignStatus.ARCHIVED
   ];
   const canEditEmailDesign = !lockedEmailDesignStatuses.includes(campaign.status);
-  const designPreviews = campaign.emailDesignTemplates.map((template) => ({
-    template,
-    html: renderEmailDesignPreview({
-      template,
-      campaign,
-      lead: sampleLead,
-      senderName: sendingAccounts[0]?.fromName || compliance.senderName || "Virtuprose",
-      unsubscribeUrl: compliance.unsubscribeUrl || "https://virtuprose.com/unsubscribe"
-    })
-  }));
+  const senderName = sendingAccounts[0]?.fromName || compliance.senderName || "Virtuprose";
+  const unsubscribeUrl = compliance.unsubscribeUrl || "https://virtuprose.com/unsubscribe";
+  const selectedTemplate = campaign.selectedEmailDesignTemplate?.active
+    ? campaign.selectedEmailDesignTemplate
+    : null;
+  const designPreview = renderCampaignEmailDesignPreview({
+    campaign,
+    template: selectedTemplate,
+    lead: sampleLead,
+    senderName,
+    unsubscribeUrl
+  });
 
   return (
     <>
@@ -251,7 +261,8 @@ export default async function CampaignDetailPage({ params }: CampaignPageProps) 
           <EmailDesignPanel
             campaign={campaign}
             canEdit={canEditEmailDesign}
-            designPreviews={designPreviews}
+            templates={emailDesignTemplates}
+            previewHtml={designPreview.bodyHtml}
             sendingAccounts={sendingAccounts}
           />
           <SendMonitor latestJob={latestJob} recentMessages={recentMessages} />
@@ -396,16 +407,20 @@ function RecipientsPanel({ campaign }: { campaign: CampaignDetail }) {
 function EmailDesignPanel({
   campaign,
   canEdit,
-  designPreviews,
+  templates,
+  previewHtml,
   sendingAccounts
 }: {
   campaign: CampaignDetail;
   canEdit: boolean;
-  designPreviews: Array<{ template: CampaignDetail["emailDesignTemplates"][number]; html: string }>;
+  templates: EmailDesignLibraryTemplate[];
+  previewHtml: string;
   sendingAccounts: Array<{ id: string; name: string; dryRun: boolean }>;
 }) {
-  const selectedTemplateId = campaign.selectedEmailDesignTemplateId;
-  const uploadLimitReached = designPreviews.length >= 3;
+  const selectedTemplateId = campaign.selectedEmailDesignTemplateId || "";
+  const selectedTemplate = templates.find((template) => template.id === selectedTemplateId);
+  const selectedIsValid = selectedTemplate?.status === EmailDesignValidationStatus.VALID;
+  const previewTitle = selectedTemplate?.name || "Default branded email";
 
   return (
     <section className="panel">
@@ -413,182 +428,115 @@ function EmailDesignPanel({
         <div>
           <h2>Email design</h2>
           <p className="muted">
-            Upload premium self-contained HTML designs, preview them, then choose one for this campaign.
+            Select one global design for the full campaign sequence. The message copy above stays the source
+            of the email text.
           </p>
         </div>
-        <Upload size={18} aria-hidden="true" />
+        <Palette size={18} aria-hidden="true" />
       </div>
       <div className="panel-body stack">
         <div className="email-design-current">
           <div>
-            <strong>{selectedTemplateId ? "Custom HTML selected" : "Default branded design"}</strong>
+            <strong>{selectedTemplate ? selectedTemplate.name : "Default branded email"}</strong>
             <p className="muted">
-              {selectedTemplateId
-                ? "Queued emails will use the selected custom HTML snapshot."
-                : "Emails use the built-in Virtuprose branded wrapper."}
+              {selectedTemplate
+                ? "All initial and follow-up emails will use this premium wrapper."
+                : "Campaign emails use the standard Virtuprose email wrapper."}
             </p>
           </div>
-          {selectedTemplateId ? (
-            <form action={useDefaultCampaignEmailDesign}>
-              <input type="hidden" name="campaignId" value={campaign.id} />
-              <button className="secondary-button" type="submit" disabled={!canEdit}>
-                Use default design
-              </button>
-            </form>
-          ) : (
-            <StatusBadge label="Active" status="PASS" />
-          )}
+          <StatusBadge
+            label={selectedTemplate ? (selectedIsValid ? "Ready" : "Blocked") : "Default"}
+            status={selectedTemplate && !selectedIsValid ? "BLOCK" : "PASS"}
+          />
         </div>
 
         {canEdit ? (
-          <form
-            action={uploadCampaignEmailDesign}
-            className="email-design-upload"
-            encType="multipart/form-data"
-          >
+          <form action={selectCampaignEmailDesign} className="email-design-selection">
             <input type="hidden" name="campaignId" value={campaign.id} />
             <label className="field">
-              <span>Design name</span>
-              <input className="input" name="name" placeholder="Premium real estate design" />
+              <span>Template</span>
+              <select className="select" name="templateId" defaultValue={selectedTemplateId}>
+                <option value="">Default branded/plain email</option>
+                {templates.map((template) => (
+                  <option
+                    key={template.id}
+                    value={template.id}
+                    disabled={template.status !== EmailDesignValidationStatus.VALID}
+                  >
+                    {template.name}
+                    {template.status !== EmailDesignValidationStatus.VALID ? " (blocked)" : ""}
+                  </option>
+                ))}
+              </select>
+              <small>The selected template wraps every campaign step with the same premium layout.</small>
             </label>
-            <label className="field">
-              <span>HTML file</span>
-              <input
-                className="input"
-                name="htmlFile"
-                type="file"
-                accept=".html,text/html"
-                required
-                disabled={uploadLimitReached}
-              />
-              <small>
-                Upload up to 3 self-contained HTML files. Each file must include {"{{body_html}}"} and an
-                unsubscribe link or {"{{unsubscribe_url}}"}.
-              </small>
-            </label>
-            <button className="secondary-button" type="submit" disabled={uploadLimitReached}>
-              <Upload size={16} aria-hidden="true" /> Upload design
+            <button className="secondary-button" type="submit">
+              Save email design
             </button>
-            {uploadLimitReached ? (
-              <div className="alert">Remove one design before uploading another.</div>
-            ) : null}
           </form>
         ) : (
-          <div className="alert">Email designs are locked after sending has been scheduled.</div>
+          <div className="alert">Email design selection is locked after sending has been scheduled.</div>
         )}
 
-        {designPreviews.length ? (
-          <div className="email-design-list">
-            {designPreviews.map(({ template, html }) => (
-              <article className="email-design-card" key={template.id}>
-                <div className="email-design-card-head">
-                  <div>
-                    <h3>{template.name}</h3>
-                    <p className="muted">Uploaded {formatDate(template.createdAt)}</p>
-                  </div>
-                  <div className="tag-list">
-                    {template.selected ? <span className="tag">Selected</span> : null}
-                    <StatusBadge
-                      label={template.status === EmailDesignValidationStatus.VALID ? "Valid" : "Blocked"}
-                      status={template.status === EmailDesignValidationStatus.VALID ? "PASS" : "BLOCK"}
-                    />
-                  </div>
-                </div>
+        {selectedTemplate?.errors.length ? (
+          <div className="alert danger-alert">
+            <strong>Template blocked</strong>
+            <ul className="compact-list">
+              {selectedTemplate.errors.map((error) => (
+                <li key={error}>{error}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
 
-                {template.errors.length ? (
-                  <div className="alert danger-alert">
-                    <strong>Fix before sending</strong>
-                    <ul className="compact-list">
-                      {template.errors.map((error) => (
-                        <li key={error}>{error}</li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : null}
+        {selectedTemplate?.warnings.length ? (
+          <div className="alert">
+            <strong>Review warnings</strong>
+            <ul className="compact-list">
+              {selectedTemplate.warnings.map((warning) => (
+                <li key={warning}>{warning}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
 
-                {template.warnings.length ? (
-                  <div className="alert">
-                    <strong>Review warnings</strong>
-                    <ul className="compact-list">
-                      {template.warnings.map((warning) => (
-                        <li key={warning}>{warning}</li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : null}
+        <div className="email-design-actions">
+          <EmailTemplatePreviewDialog
+            title={`${previewTitle} preview`}
+            description="Rendered with this campaign's first email step and first available recipient sample."
+            html={previewHtml}
+          />
+          <Link className="secondary-button" href="/email-design-templates">
+            Open template library
+          </Link>
+        </div>
 
-                <details className="advanced-inline email-design-preview" open={template.selected}>
-                  <summary>Preview desktop and mobile</summary>
-                  <div className="email-preview-grid">
-                    <EmailPreviewFrame
-                      title={`${template.name} desktop preview`}
-                      html={html}
-                      mode="desktop"
-                    />
-                    <EmailPreviewFrame title={`${template.name} mobile preview`} html={html} mode="mobile" />
-                  </div>
-                </details>
-
-                <div className="email-design-actions">
-                  <form action={selectCampaignEmailDesign}>
-                    <input type="hidden" name="campaignId" value={campaign.id} />
-                    <input type="hidden" name="templateId" value={template.id} />
-                    <button
-                      className="secondary-button"
-                      type="submit"
-                      disabled={
-                        !canEdit || template.selected || template.status !== EmailDesignValidationStatus.VALID
-                      }
-                    >
-                      Select design
-                    </button>
-                  </form>
-
-                  <form action={sendCampaignEmailDesignTest} className="email-design-test-form">
-                    <input type="hidden" name="campaignId" value={campaign.id} />
-                    <input type="hidden" name="templateId" value={template.id} />
-                    <select className="select" name="sendingAccountId" aria-label="Test sending account">
-                      {sendingAccounts.map((account) => (
-                        <option key={account.id} value={account.id}>
-                          {account.name} - {account.dryRun ? "test mode" : "live SMTP"}
-                        </option>
-                      ))}
-                    </select>
-                    <input
-                      className="input"
-                      name="to"
-                      type="email"
-                      placeholder="you@example.com"
-                      aria-label="Test recipient email"
-                      required
-                    />
-                    <button
-                      className="secondary-button"
-                      type="submit"
-                      disabled={
-                        !sendingAccounts.length || template.status !== EmailDesignValidationStatus.VALID
-                      }
-                    >
-                      Send test
-                    </button>
-                  </form>
-
-                  <form action={removeCampaignEmailDesign}>
-                    <input type="hidden" name="campaignId" value={campaign.id} />
-                    <input type="hidden" name="templateId" value={template.id} />
-                    <button className="danger-button" type="submit" disabled={!canEdit}>
-                      <Trash2 size={16} aria-hidden="true" /> Remove
-                    </button>
-                  </form>
-                </div>
-              </article>
+        <form action={sendCampaignEmailDesignTest} className="email-design-test-form">
+          <input type="hidden" name="campaignId" value={campaign.id} />
+          <input type="hidden" name="templateId" value={selectedTemplateId} />
+          <select className="select" name="sendingAccountId" aria-label="Test sending account">
+            {sendingAccounts.map((account) => (
+              <option key={account.id} value={account.id}>
+                {account.name} - {account.dryRun ? "test mode" : "live SMTP"}
+              </option>
             ))}
-          </div>
-        ) : (
-          <div className="empty-state compact-empty">
-            No custom designs uploaded. The default branded design will be used.
-          </div>
-        )}
+          </select>
+          <input
+            className="input"
+            name="to"
+            type="email"
+            placeholder="you@example.com"
+            aria-label="Test recipient email"
+            required
+          />
+          <button
+            className="secondary-button"
+            type="submit"
+            disabled={!sendingAccounts.length || (Boolean(selectedTemplate) && !selectedIsValid)}
+          >
+            Send test
+          </button>
+        </form>
       </div>
     </section>
   );
@@ -943,15 +891,15 @@ function renderPreview(
     .replaceAll("{{unsubscribe_url}}", compliance.unsubscribeUrl || "https://virtuprose.com/unsubscribe");
 }
 
-function renderEmailDesignPreview({
-  template,
+function renderCampaignEmailDesignPreview({
   campaign,
+  template,
   lead,
   senderName,
   unsubscribeUrl
 }: {
-  template: CampaignDetail["emailDesignTemplates"][number];
   campaign: CampaignDetail;
+  template: CampaignDetail["selectedEmailDesignTemplate"];
   lead: { firstName: string | null; company: string | null; email: string } | undefined;
   senderName: string;
   unsubscribeUrl: string;
@@ -962,22 +910,31 @@ function renderEmailDesignPreview({
     email: "lead@example.com"
   };
   const firstStep = campaign.steps[0];
-  if (!firstStep) return template.sanitizedHtml;
+  if (!firstStep) {
+    return {
+      subject: "Campaign preview",
+      bodyText: "No email step is available yet.",
+      bodyHtml:
+        '<!doctype html><html><body style="font-family:Arial,Helvetica,sans-serif;padding:24px;">No email step is available yet.</body></html>'
+    };
+  }
 
-  const rendered = renderEmailCopy({
+  if (!template) {
+    return renderPlainEmailPreviewHtml({
+      subject: firstStep.subject,
+      body: firstStep.body,
+      lead: sampleLead,
+      senderName,
+      unsubscribeUrl
+    });
+  }
+
+  return renderEmailDesignTemplateHtml({
+    template,
     subject: firstStep.subject,
     body: firstStep.body,
     lead: sampleLead,
     senderName,
-    unsubscribeUrl
-  });
-
-  return renderCustomEmailHtml({
-    designHtml: template.sanitizedHtml,
-    account: { fromName: senderName },
-    subject: rendered.subject,
-    text: rendered.bodyText,
-    lead: sampleLead,
     unsubscribeUrl
   });
 }

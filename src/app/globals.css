@@ -1046,6 +1046,17 @@ tr:last-child td {
   margin-top: 4px;
 }
 
+.simple-list {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  color: var(--text-default);
+  line-height: 1.5;
+}
+
+.simple-list li + li {
+  margin-top: 4px;
+}
+
 .tag {
   background: var(--bg-subtle);
   color: var(--text-default);
@@ -1427,6 +1438,7 @@ tr:last-child td {
   margin: 4px 0 0;
 }
 
+.email-design-selection,
 .email-design-upload,
 .email-design-card {
   display: grid;
@@ -1497,6 +1509,73 @@ tr:last-child td {
   display: grid;
   grid-template-columns: minmax(160px, 1fr) minmax(180px, 1fr) auto;
   gap: 8px;
+}
+
+.email-template-library {
+  margin-top: 16px;
+}
+
+.email-template-card {
+  overflow: hidden;
+  background: linear-gradient(135deg, rgba(45, 212, 218, 0.12), rgba(255, 250, 240, 0) 42%), #fffefa;
+}
+
+.email-template-icon {
+  width: 44px;
+  height: 44px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 14px;
+  background: #e3fbf7;
+  color: #087b7f;
+  margin-bottom: 12px;
+}
+
+.email-template-meta {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.email-template-meta > div {
+  min-width: 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.72);
+  padding: 12px;
+}
+
+.email-template-meta span {
+  display: block;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.email-template-meta strong {
+  display: block;
+  margin-top: 6px;
+  color: var(--text-strong);
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.email-template-test-form {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) minmax(180px, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.email-template-preview-dialog {
+  width: min(1180px, calc(100vw - 32px));
+  max-width: min(1180px, calc(100vw - 32px));
+  max-height: min(860px, calc(100vh - 32px));
+  overflow: auto;
+}
+
+.email-preview-grid-modal .email-design-frame-shell iframe {
+  height: min(620px, 68vh);
 }
 
 .checklist-item {
@@ -2229,6 +2308,8 @@ a.deal-contact-value:focus-visible {
   .campaign-step-timing,
   .email-preview-grid,
   .email-design-test-form,
+  .email-template-meta,
+  .email-template-test-form,
   .import-summary-grid {
     grid-template-columns: 1fr;
   }

@@ -22,8 +22,14 @@ export default async function CampaignsPage() {
       take: 100
     }),
     prisma.campaign.count(),
-    prisma.campaign.count({ where: { status: CampaignStatus.REVIEW_BLOCKED } }),
-    prisma.campaign.count({ where: { status: { in: [CampaignStatus.SCHEDULED, CampaignStatus.SENDING] } } }),
+    prisma.campaign.count({
+      where: { status: CampaignStatus.REVIEW_BLOCKED }
+    }),
+    prisma.campaign.count({
+      where: {
+        status: { in: [CampaignStatus.SCHEDULED, CampaignStatus.SENDING] }
+      }
+    }),
     prisma.campaign.count({ where: { status: CampaignStatus.COMPLETED } })
   ]);
 
@@ -35,8 +41,11 @@ export default async function CampaignsPage() {
         description="Create WhatsApp or email outreach, review the message, and start safely."
         actions={
           <>
+            <Link className="secondary-button" href="/email-design-templates">
+              Email Designs
+            </Link>
             <Link className="secondary-button" href="/whatsapp/templates">
-              Message Templates
+              WhatsApp Templates
             </Link>
             <Link className="secondary-button" href="/campaigns/new">
               Create Email

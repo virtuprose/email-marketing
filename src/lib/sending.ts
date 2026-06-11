@@ -200,9 +200,12 @@ export async function scheduleCampaignSend(campaignId: string, sendingAccountId:
     }
     if (
       campaign.selectedEmailDesignTemplate &&
-      campaign.selectedEmailDesignTemplate.status !== EmailDesignValidationStatus.VALID
+      (!campaign.selectedEmailDesignTemplate.active ||
+        campaign.selectedEmailDesignTemplate.status !== EmailDesignValidationStatus.VALID)
     ) {
-      throw new Error("Selected email design has blockers. Fix it before scheduling.");
+      throw new Error(
+        "Selected email design is inactive or has blockers. Choose a valid design before scheduling."
+      );
     }
 
     const existingActiveJob = await tx.sendJob.findFirst({
@@ -659,7 +662,7 @@ export async function sendEmailDesignTest({
   to: string;
   subject: string;
   text: string;
-  html: string;
+  html?: string;
   unsubscribeUrl?: string;
 }) {
   const result = await sendEmail({ account, to, subject, text, html, unsubscribeUrl });
@@ -667,7 +670,12 @@ export async function sendEmailDesignTest({
   await prisma.emailEvent.create({
     data: {
       type: EmailEventType.TEST_SENT,
-      metadata: { to, dryRun: result.dryRun, providerMessageId: result.providerMessageId, customHtml: true }
+      metadata: {
+        to,
+        dryRun: result.dryRun,
+        providerMessageId: result.providerMessageId,
+        customHtml: Boolean(html)
+      }
     }
   });
   await prisma.sendingAccount.update({
