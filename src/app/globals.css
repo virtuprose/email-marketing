@@ -702,6 +702,7 @@ h3 {
   padding: 20px;
   background:
     linear-gradient(180deg, rgba(255, 253, 248, 0.96), rgba(255, 250, 240, 0.78)), var(--bg-elevated);
+  min-width: 0;
 }
 
 .metric-label {
@@ -716,7 +717,8 @@ h3 {
   color: var(--text-strong);
   font-size: 34px;
   font-weight: 860;
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
+  overflow-wrap: anywhere;
 }
 
 .metric-note {
@@ -728,6 +730,25 @@ h3 {
 .metric-inline {
   font-size: 16px;
   line-height: 1.4;
+}
+
+.compact-metric .metric-label {
+  margin-bottom: 8px;
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.compact-metric .metric-value {
+  font-size: 15px;
+  line-height: 1.35;
+}
+
+.compact-metric .status {
+  max-width: 100%;
+  justify-content: center;
+  white-space: normal;
+  text-align: center;
+  line-height: 1.15;
 }
 
 .table-wrap {
@@ -933,6 +954,7 @@ tr:last-child td {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  max-width: 100%;
   border-radius: 999px;
   padding: 6px 10px;
   font-size: 12px;
@@ -1644,6 +1666,7 @@ tr:last-child td {
 .reply-detail-panel {
   position: sticky;
   top: 96px;
+  min-width: 0;
 }
 
 .reply-detail-header {
@@ -1702,6 +1725,7 @@ tr:last-child td {
 
 .reply-signal-grid {
   gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .reply-section {
@@ -2137,6 +2161,10 @@ a.deal-contact-value:focus-visible {
     grid-template-columns: 1fr;
   }
 
+  .reply-signal-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .reply-detail-panel {
     position: static;
   }
@@ -2156,7 +2184,7 @@ a.deal-contact-value:focus-visible {
 
 @media (max-width: 640px) {
   .main {
-    padding: 20px;
+    padding: 16px;
   }
 
   .studio-topbar-actions {
@@ -2171,6 +2199,16 @@ a.deal-contact-value:focus-visible {
   .page-header {
     padding: 20px;
     border-radius: 22px;
+  }
+
+  .panel {
+    border-radius: 20px;
+  }
+
+  .panel-header,
+  .panel-body {
+    padding-left: 16px;
+    padding-right: 16px;
   }
 
   .campaign-status-timeline {
@@ -2210,6 +2248,71 @@ a.deal-contact-value:focus-visible {
   .profile-row {
     grid-template-columns: 1fr;
     display: grid;
+  }
+
+  .reply-detail-header {
+    gap: 12px;
+    align-items: start;
+  }
+
+  .reply-detail-heading {
+    width: 100%;
+    align-items: start;
+  }
+
+  .reply-channel-icon.large {
+    width: 40px;
+    height: 40px;
+  }
+
+  .reply-action-card {
+    padding: 14px;
+  }
+
+  .reply-action-card strong {
+    font-size: 15px;
+  }
+
+  .reply-action-card p,
+  .readable-preview {
+    font-size: 14px;
+    line-height: 1.55;
+  }
+
+  .reply-signal-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .compact-metric {
+    padding: 10px;
+    min-height: 118px;
+    display: grid;
+    align-content: start;
+  }
+
+  .compact-metric .metric-label {
+    font-size: 11px;
+  }
+
+  .compact-metric .metric-value {
+    font-size: 14px;
+  }
+
+  .toolbar {
+    justify-content: stretch;
+  }
+
+  .toolbar .button,
+  .toolbar .secondary-button,
+  .toolbar .danger-button {
+    width: 100%;
+    min-width: 0;
+    white-space: normal;
+    text-align: center;
+    line-height: 1.2;
+    padding-top: 10px;
+    padding-bottom: 10px;
   }
 
   .email-design-frame-mobile iframe {
