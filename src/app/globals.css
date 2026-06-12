@@ -1515,6 +1515,39 @@ tr:last-child td {
   margin-top: 16px;
 }
 
+.email-template-create-panel {
+  margin-top: 16px;
+  background: linear-gradient(135deg, rgba(8, 123, 127, 0.1), rgba(255, 250, 240, 0) 48%), var(--bg-elevated);
+}
+
+.email-template-create-form {
+  display: grid;
+  gap: 14px;
+}
+
+.template-code-editor {
+  min-height: 280px;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  line-height: 1.5;
+  background: #fffefa;
+}
+
+.email-template-status-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 680;
+}
+
+.email-template-status-line span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .email-template-card {
   overflow: hidden;
   background: linear-gradient(135deg, rgba(45, 212, 218, 0.12), rgba(255, 250, 240, 0) 42%), #fffefa;
@@ -1576,6 +1609,15 @@ tr:last-child td {
 
 .email-preview-grid-modal .email-design-frame-shell iframe {
   height: min(620px, 68vh);
+}
+
+.field-error {
+  display: block;
+  margin-top: 6px;
+  color: var(--danger);
+  font-size: 13px;
+  font-weight: 720;
+  line-height: 1.4;
 }
 
 .checklist-item {
@@ -2326,6 +2368,7 @@ a.deal-contact-value:focus-visible {
   .email-design-current,
   .email-design-card-head,
   .email-design-actions,
+  .email-template-status-line,
   .profile-row {
     grid-template-columns: 1fr;
     display: grid;

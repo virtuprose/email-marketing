@@ -2,6 +2,7 @@ import { EmailDesignValidationStatus } from "@prisma/client";
 import { ArrowLeft, MailCheck, Palette, Send } from "lucide-react";
 import Link from "next/link";
 import { sendGlobalEmailDesignTest } from "@/app/actions";
+import { EmailTemplateCreateForm } from "@/components/email-template-create-form";
 import { EmailTemplatePreviewDialog } from "@/components/email-template-preview-dialog";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
@@ -35,7 +36,7 @@ export default async function EmailDesignTemplatesPage() {
       <PageHeader
         eyebrow="Email design"
         title="Email Design Templates"
-        description="Manage the premium visual wrapper used by email campaigns. V1 ships one fixed Virtuprose template."
+        description="Manage reusable premium HTML wrappers for email campaigns. Add a template once, test it, then select it from any campaign."
         actions={
           <>
             <Link className="secondary-button" href="/campaigns">
@@ -47,6 +48,8 @@ export default async function EmailDesignTemplatesPage() {
           </>
         }
       />
+
+      <EmailTemplateCreateForm />
 
       <section className="grid grid-2 email-template-library" aria-label="Email design templates">
         {templates.map((template) => {
@@ -72,6 +75,7 @@ export default async function EmailDesignTemplatesPage() {
                 </div>
                 <div className="tag-list">
                   {template.builtIn ? <span className="tag">Built-in</span> : null}
+                  {!template.builtIn ? <span className="tag">Custom</span> : null}
                   <StatusBadge label={isValid ? "Ready" : "Blocked"} status={isValid ? "PASS" : "BLOCK"} />
                 </div>
               </div>
@@ -84,7 +88,7 @@ export default async function EmailDesignTemplatesPage() {
                   </div>
                   <div>
                     <span>Images</span>
-                    <strong>No external images</strong>
+                    <strong>{template.builtIn ? "No external images" : "HTTPS/CID checked"}</strong>
                   </div>
                   <div>
                     <span>Mobile</span>

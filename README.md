@@ -119,7 +119,7 @@ Email sending infrastructure exists and production SMTP is configured through Ho
 - SMTP sending account settings with dry-run mode by default
 - Conservative daily, per-minute, and per-domain sending caps
 - Queue-based campaign scheduling for approved campaigns
-- Global Email Design Templates module with the built-in **Virtuprose Signature Premium** wrapper, desktop/mobile previews, test sends, and campaign-level selection
+- Global Email Design Templates module with the built-in **Virtuprose Signature Premium** wrapper, custom HTML template creation, desktop/mobile previews, test sends, and campaign-level selection
 - Worker-side suppression, unsubscribe, campaign-state, account-state, and rate-limit checks
 - Email message records, send jobs, email events, provider message IDs, and errors
 - Public unsubscribe links that immediately suppress the lead and skip remaining queued campaign emails
@@ -170,7 +170,7 @@ Body: {
 2. Import leads with source, country, and legal-basis fields by uploading CSV or pasting rows copied from Excel/Google Sheets.
 3. Create or select the Virtuprose offer you want to sell.
 4. Generate a campaign, review the copy, fix blockers, and approve it.
-5. Optional: select **Virtuprose Signature Premium** in the campaign **Email design** panel, preview the rendered campaign email, and send a test.
+5. Optional: add or select a global template in the campaign **Email design** panel, preview the rendered campaign email, and send a test.
 6. Schedule the campaign through the sending account.
 7. Start the worker with `npm run worker`.
 8. Paste replies into `/inbox`, or connect an inbound parser to:

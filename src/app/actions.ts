@@ -64,6 +64,7 @@ import {
   ensureBuiltInEmailDesignTemplate,
   renderEmailDesignTemplateHtml
 } from "@/lib/email-design-template-library";
+import { MAX_EMAIL_DESIGN_BYTES, prepareEmailDesignHtml } from "@/lib/email-designs";
 import { COMPLIANCE_SETTINGS_KEY, parseComplianceSettings } from "@/lib/settings";
 import { generateDefaultMeetingAvailability } from "@/lib/meeting-availability";
 import {
@@ -164,6 +165,12 @@ const globalEmailDesignTestSchema = z.object({
   templateId: z.string().min(1),
   sendingAccountId: z.string().min(1),
   to: z.string().email()
+});
+
+const emailDesignTemplateCreateSchema = z.object({
+  name: z.string().trim().min(3, "Template name must be at least 3 characters.").max(90),
+  description: z.string().trim().max(320, "Description must be 320 characters or less.").optional(),
+  html: z.string().trim().min(20, "Paste HTML or upload a self-contained .html file.")
 });
 
 const manualReplySchema = z.object({
@@ -291,6 +298,20 @@ export type AiAssistantSettingsActionState = {
   message: string;
   fieldErrors: Record<string, string[]>;
   values?: AiAssistantSettingsFormValues;
+  formKey: string;
+};
+
+export type EmailDesignTemplateFormValues = {
+  name: string;
+  description: string;
+  html: string;
+};
+
+export type EmailDesignTemplateActionState = {
+  status: "idle" | "success" | "error" | "warning";
+  message: string;
+  fieldErrors: Record<string, string[]>;
+  values?: EmailDesignTemplateFormValues;
   formKey: string;
 };
 
@@ -1320,6 +1341,136 @@ export async function sendGlobalEmailDesignTest(formData: FormData) {
   });
 
   revalidatePath("/email-design-templates");
+}
+
+export async function createEmailDesignTemplateWithState(
+  _previousState: EmailDesignTemplateActionState,
+  formData: FormData
+): Promise<EmailDesignTemplateActionState> {
+  const input = await emailDesignTemplateValuesFromFormData(formData);
+  const values = input.values;
+
+  if (input.fileError) {
+    return {
+      status: "error",
+      message: "Fix the uploaded HTML file before saving.",
+      fieldErrors: { html: [input.fileError] },
+      values,
+      formKey: `file-${Date.now()}`
+    };
+  }
+
+  const parsed = emailDesignTemplateCreateSchema.safeParse(values);
+
+  if (!parsed.success) {
+    return {
+      status: "error",
+      message: "Fix the highlighted template fields before saving.",
+      fieldErrors: parsed.error.flatten().fieldErrors,
+      values,
+      formKey: `error-${Date.now()}`
+    };
+  }
+
+  const prepared = prepareEmailDesignHtml(parsed.data.html);
+  if (prepared.errors.length) {
+    return {
+      status: "error",
+      message: "Fix the HTML blockers before saving this template.",
+      fieldErrors: { html: prepared.errors },
+      values,
+      formKey: `blocked-${Date.now()}`
+    };
+  }
+
+  const slug = await uniqueEmailDesignSlug(parsed.data.name);
+  const template = await prisma.emailDesignTemplate.create({
+    data: {
+      slug,
+      name: parsed.data.name,
+      description: parsed.data.description || "",
+      originalHtml: parsed.data.html,
+      sanitizedHtml: prepared.sanitizedHtml,
+      status: prepared.status,
+      warnings: prepared.warnings,
+      errors: prepared.errors,
+      active: true,
+      builtIn: false
+    }
+  });
+
+  await prisma.auditLog.create({
+    data: {
+      action: "email_design_template.created",
+      entityType: "email_design_template",
+      entityId: template.id,
+      metadata: {
+        slug: template.slug,
+        warningCount: prepared.warnings.length
+      }
+    }
+  });
+
+  revalidatePath("/email-design-templates");
+  revalidatePath("/campaigns");
+
+  return {
+    status: prepared.warnings.length ? "warning" : "success",
+    message: prepared.warnings.length
+      ? `Template saved with ${prepared.warnings.length} warning(s). Review the warning list before live sending.`
+      : "Template saved and ready to use in campaigns.",
+    fieldErrors: {},
+    values: { name: "", description: "", html: "" },
+    formKey: `success-${template.id}`
+  };
+}
+
+async function emailDesignTemplateValuesFromFormData(
+  formData: FormData
+): Promise<{ values: EmailDesignTemplateFormValues; fileError?: string }> {
+  const pastedHtml = String(formData.get("html") ?? "");
+  const file = formData.get("htmlFile");
+  let fileHtml = "";
+  const values = {
+    name: String(formData.get("name") ?? ""),
+    description: String(formData.get("description") ?? ""),
+    html: pastedHtml
+  };
+
+  if (file instanceof File && file.size > 0) {
+    if (file.size > MAX_EMAIL_DESIGN_BYTES) {
+      return {
+        values,
+        fileError: "HTML file is too large. Keep templates under 200 KB."
+      };
+    }
+    fileHtml = await file.text();
+  }
+
+  return {
+    values: {
+      ...values,
+      html: fileHtml || pastedHtml
+    }
+  };
+}
+
+async function uniqueEmailDesignSlug(name: string) {
+  const base =
+    name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 60) || "email-design-template";
+  let slug = base;
+  let suffix = 2;
+
+  while (await prisma.emailDesignTemplate.findUnique({ where: { slug }, select: { id: true } })) {
+    slug = `${base}-${suffix}`;
+    suffix += 1;
+  }
+
+  return slug;
 }
 
 export async function confirmCampaignLeadCompliance(formData: FormData) {
