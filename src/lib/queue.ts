@@ -5,6 +5,7 @@ export const FOUNDATION_QUEUE_NAME = "foundation";
 export const EMAIL_QUEUE_NAME = "email-sending";
 export const WHATSAPP_QUEUE_NAME = "whatsapp-sending";
 export const AI_REPLY_QUEUE_NAME = "ai-reply-sending";
+export const WEBSITE_AUDIT_QUEUE_NAME = "website-audit";
 
 export type FoundationJobData = {
   message: string;
@@ -21,6 +22,10 @@ export type WhatsappSendJobData = {
 
 export type AiReplyJobData = {
   draftId: string;
+};
+
+export type WebsiteAuditJobData = {
+  candidateId: string;
 };
 
 export function redisConnection(): RedisOptions {
@@ -64,6 +69,13 @@ export function aiReplyQueue() {
   });
 }
 
+export function websiteAuditQueue() {
+  return new Queue<WebsiteAuditJobData>(WEBSITE_AUDIT_QUEUE_NAME, {
+    connection: redisConnection(),
+    defaultJobOptions: websiteAuditJobOptions()
+  });
+}
+
 export function foundationJobOptions(): JobsOptions {
   return {
     attempts: 1,
@@ -89,6 +101,14 @@ export function whatsappJobOptions(): JobsOptions {
 }
 
 export function aiReplyJobOptions(): JobsOptions {
+  return {
+    attempts: 1,
+    removeOnComplete: 500,
+    removeOnFail: 500
+  };
+}
+
+export function websiteAuditJobOptions(): JobsOptions {
   return {
     attempts: 1,
     removeOnComplete: 500,

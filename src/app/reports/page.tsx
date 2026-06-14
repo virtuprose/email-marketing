@@ -1,38 +1,78 @@
 import { DealStatus, EmailMessageStatus, LeadStatus, ReplyIntent } from "@prisma/client";
 import { BarChart3, MailCheck, Reply, ShieldCheck, Target } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
-import { formatNumber } from "@/lib/format";
+import { formatDate, formatNumber } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
 import { leadStatusLabels, replyIntentLabels } from "@/lib/status";
 
 export const dynamic = "force-dynamic";
 
-export default async function ReportsPage() {
-  const [messageCounts, replyCounts, leadCounts, dealCounts, topCampaigns, topSources] = await Promise.all([
-    prisma.emailMessage.groupBy({ by: ["status"], _count: { status: true } }),
-    prisma.inboundReply.groupBy({ by: ["intent"], _count: { intent: true } }),
-    prisma.lead.groupBy({ by: ["status"], _count: { status: true } }),
-    prisma.deal.groupBy({ by: ["status"], _count: { status: true } }),
+type ReportsPageProps = {
+  searchParams: Promise<{ range?: string; start?: string; end?: string }>;
+};
+
+export default async function ReportsPage({ searchParams }: ReportsPageProps) {
+  const params = await searchParams;
+  const range = parseReportRange(params);
+  const messageDateWhere = dateRangeWhere(range, "createdAt");
+  const replyDateWhere = dateRangeWhere(range, "receivedAt");
+  const leadDateWhere = dateRangeWhere(range, "createdAt");
+  const dealDateWhere = dateRangeWhere(range, "updatedAt");
+  const campaignActivityWhere = range.isAllTime
+    ? {}
+    : {
+        OR: [
+          { emailMessages: { some: messageDateWhere } },
+          { inboundReplies: { some: { ...replyDateWhere, intent: { not: ReplyIntent.NON_SALES } } } }
+        ]
+      };
+
+  const [
+    sent,
+    failed,
+    skipped,
+    replyCounts,
+    leadCounts,
+    dealCounts,
+    topCampaigns,
+    sourceGroups
+  ] = await Promise.all([
+    prisma.emailMessage.count({
+      where: { status: EmailMessageStatus.SENT, ...(range.isAllTime ? {} : dateRangeWhere(range, "sentAt")) }
+    }),
+    prisma.emailMessage.count({
+      where: { status: EmailMessageStatus.FAILED, ...(range.isAllTime ? {} : dateRangeWhere(range, "failedAt")) }
+    }),
+    prisma.emailMessage.count({
+      where: { status: EmailMessageStatus.SKIPPED, ...(range.isAllTime ? {} : dateRangeWhere(range, "skippedAt")) }
+    }),
+    prisma.inboundReply.groupBy({
+      by: ["intent"],
+      where: { ...replyDateWhere, intent: { not: ReplyIntent.NON_SALES }, OR: [{ leadId: null }, { lead: { deletedAt: null } }] },
+      _count: { intent: true }
+    }),
+    prisma.lead.groupBy({ by: ["status"], where: { deletedAt: null, ...leadDateWhere }, _count: { status: true } }),
+    prisma.deal.groupBy({ by: ["status"], where: { lead: { deletedAt: null }, ...dealDateWhere }, _count: { status: true } }),
     prisma.campaign.findMany({
+      where: campaignActivityWhere,
       include: {
         offer: true,
-        _count: { select: { recipients: true, inboundReplies: true, emailMessages: true } }
+        emailMessages: { select: { status: true, createdAt: true, sentAt: true, failedAt: true, skippedAt: true } },
+        inboundReplies: { where: { intent: { not: ReplyIntent.NON_SALES } }, select: { receivedAt: true } },
+        _count: { select: { recipients: true } }
       },
       orderBy: { updatedAt: "desc" },
       take: 8
     }),
     prisma.lead.groupBy({
       by: ["source"],
-      _count: { source: true },
-      _avg: { scoreIntent: true, scoreEngagement: true },
-      orderBy: { _count: { source: "desc" } },
-      take: 8
+      where: { deletedAt: null, ...leadDateWhere },
+      _count: true,
+      _avg: { scoreIntent: true, scoreEngagement: true }
     })
   ]);
+  const topSources = sourceGroups.sort((a, b) => b._count - a._count).slice(0, 8);
 
-  const sent = countMessage(messageCounts, EmailMessageStatus.SENT);
-  const failed = countMessage(messageCounts, EmailMessageStatus.FAILED);
-  const skipped = countMessage(messageCounts, EmailMessageStatus.SKIPPED);
   const totalReplies = replyCounts.reduce((sum, item) => sum + item._count.intent, 0);
   const hotReplies =
     countReply(replyCounts, ReplyIntent.HOT_LEAD) +
@@ -49,8 +89,42 @@ export default async function ReportsPage() {
       <PageHeader
         eyebrow="Performance"
         title="Reports"
-        description="Use this view to judge reply quality, sender safety, source quality, and hot-lead production instead of chasing vanity metrics."
+        description={`Use this view to judge reply quality, sender safety, source quality, and hot-lead production. Active range: ${range.label}.`}
       />
+
+      <section className="panel" style={{ marginBottom: 16 }}>
+        <div className="panel-header">
+          <div>
+            <h2>Date range</h2>
+            <p className="muted">{range.summary}</p>
+          </div>
+        </div>
+        <div className="panel-body">
+          <form className="form-grid" action="/reports">
+            <label className="field">
+              <span>Range</span>
+              <select className="select" name="range" defaultValue={range.key}>
+                <option value="all">All time</option>
+                <option value="7d">Last 7 days</option>
+                <option value="30d">Last 30 days</option>
+                <option value="90d">Last 90 days</option>
+                <option value="custom">Custom date range</option>
+              </select>
+            </label>
+            <label className="field">
+              <span>Start date</span>
+              <input className="input" name="start" type="date" defaultValue={range.startInput ?? ""} />
+            </label>
+            <label className="field">
+              <span>End date</span>
+              <input className="input" name="end" type="date" defaultValue={range.endInput ?? ""} />
+            </label>
+            <button className="secondary-button" type="submit">
+              Apply range
+            </button>
+          </form>
+        </div>
+      </section>
 
       <section className="grid grid-4" aria-label="Performance summary">
         <Metric icon={<MailCheck size={18} />} label="Sent" value={sent} note="Campaign messages sent" />
@@ -129,24 +203,57 @@ export default async function ReportsPage() {
                   <th>Campaign</th>
                   <th>Offer</th>
                   <th>Recipients</th>
-                  <th>Messages</th>
+                  <th>Sent</th>
+                  <th>Queued</th>
                   <th>Replies</th>
                 </tr>
               </thead>
               <tbody>
                 {topCampaigns.length ? (
-                  topCampaigns.map((campaign) => (
-                    <tr key={campaign.id}>
-                      <td>{campaign.name}</td>
-                      <td>{campaign.offer.name}</td>
-                      <td>{formatNumber(campaign._count.recipients)}</td>
-                      <td>{formatNumber(campaign._count.emailMessages)}</td>
-                      <td>{formatNumber(campaign._count.inboundReplies)}</td>
-                    </tr>
-                  ))
+                  topCampaigns.map((campaign) => {
+                    const sentMessages = countCampaignMessages(
+                      campaign.emailMessages,
+                      EmailMessageStatus.SENT,
+                      range
+                    );
+                    const queuedMessages =
+                      countCampaignMessages(campaign.emailMessages, EmailMessageStatus.QUEUED, range) +
+                      countCampaignMessages(campaign.emailMessages, EmailMessageStatus.SENDING, range);
+                    const failedMessages = countCampaignMessages(
+                      campaign.emailMessages,
+                      EmailMessageStatus.FAILED,
+                      range
+                    );
+                    const skippedMessages = countCampaignMessages(
+                      campaign.emailMessages,
+                      EmailMessageStatus.SKIPPED,
+                      range
+                    );
+
+                    return (
+                      <tr key={campaign.id}>
+                        <td>{campaign.name}</td>
+                        <td>{campaign.offer.name}</td>
+                        <td>{formatNumber(campaign._count.recipients)}</td>
+                        <td>{formatNumber(sentMessages)}</td>
+                        <td>
+                          {formatNumber(queuedMessages)}
+                          {failedMessages || skippedMessages ? (
+                            <>
+                              <br />
+                              <span className="muted">
+                                {formatNumber(skippedMessages)} skipped, {formatNumber(failedMessages)} failed
+                              </span>
+                            </>
+                          ) : null}
+                        </td>
+                        <td>{formatNumber(campaign.inboundReplies.filter((reply) => inRange(reply.receivedAt, range)).length)}</td>
+                      </tr>
+                    );
+                  })
                 ) : (
                   <tr>
-                    <td colSpan={5}>
+                    <td colSpan={6}>
                       <div className="empty-state">No campaigns yet.</div>
                     </td>
                   </tr>
@@ -178,9 +285,9 @@ export default async function ReportsPage() {
                   topSources.map((source) => (
                     <tr key={source.source ?? "missing"}>
                       <td>{source.source || <span className="muted">Missing</span>}</td>
-                      <td>{formatNumber(source._count.source)}</td>
-                      <td>{Math.round(source._avg.scoreIntent ?? 0)}</td>
-                      <td>{Math.round(source._avg.scoreEngagement ?? 0)}</td>
+                      <td>{formatNumber(source._count)}</td>
+                      <td>{Math.round(source._avg?.scoreIntent ?? 0)}</td>
+                      <td>{Math.round(source._avg?.scoreEngagement ?? 0)}</td>
                     </tr>
                   ))
                 ) : (
@@ -217,13 +324,6 @@ export default async function ReportsPage() {
   );
 }
 
-function countMessage(
-  counts: Array<{ status: EmailMessageStatus; _count: { status: number } }>,
-  status: EmailMessageStatus
-) {
-  return counts.find((item) => item.status === status)?._count.status ?? 0;
-}
-
 function countReply(counts: Array<{ intent: ReplyIntent; _count: { intent: number } }>, intent: ReplyIntent) {
   return counts.find((item) => item.intent === intent)?._count.intent ?? 0;
 }
@@ -234,6 +334,110 @@ function countLead(counts: Array<{ status: LeadStatus; _count: { status: number 
 
 function countDeal(counts: Array<{ status: DealStatus; _count: { status: number } }>, status: DealStatus) {
   return counts.find((item) => item.status === status)?._count.status ?? 0;
+}
+
+function countCampaignMessages(
+  messages: Array<{
+    status: EmailMessageStatus;
+    createdAt: Date;
+    sentAt: Date | null;
+    failedAt: Date | null;
+    skippedAt: Date | null;
+  }>,
+  status: EmailMessageStatus,
+  range: ReportRange
+) {
+  return messages.filter((message) => message.status === status && inRange(messageDate(message), range)).length;
+}
+
+type ReportRange = {
+  key: "all" | "7d" | "30d" | "90d" | "custom";
+  label: string;
+  summary: string;
+  start: Date | null;
+  end: Date | null;
+  startInput?: string;
+  endInput?: string;
+  isAllTime: boolean;
+};
+
+function parseReportRange(params: { range?: string; start?: string; end?: string }): ReportRange {
+  const key = ["7d", "30d", "90d", "custom"].includes(params.range || "")
+    ? (params.range as ReportRange["key"])
+    : "all";
+  if (key === "all") {
+    return { key, label: "All time", summary: "Showing all active recorded activity.", start: null, end: null, isAllTime: true };
+  }
+  if (key === "custom") {
+    const start = parseKuwaitDateInput(params.start, "start");
+    const end = parseKuwaitDateInput(params.end, "end");
+    const validStart = start && end && start <= end ? start : null;
+    const validEnd = start && end && start <= end ? end : null;
+    return {
+      key,
+      label: validStart && validEnd ? `${formatDate(validStart)} to ${formatDate(validEnd)}` : "Custom range",
+      summary: validStart && validEnd ? "Showing activity inside the selected custom dates." : "Choose a start and end date to apply a custom range.",
+      start: validStart,
+      end: validEnd,
+      startInput: params.start,
+      endInput: params.end,
+      isAllTime: !validStart || !validEnd
+    };
+  }
+
+  const days = key === "7d" ? 7 : key === "30d" ? 30 : 90;
+  const end = new Date();
+  const start = new Date(end.getTime() - days * 24 * 60 * 60 * 1000);
+  return {
+    key,
+    label: `Last ${days} days`,
+    summary: `Showing activity from ${formatDate(start)} through ${formatDate(end)}.`,
+    start,
+    end,
+    startInput: inputDate(start),
+    endInput: inputDate(end),
+    isAllTime: false
+  };
+}
+
+function parseKuwaitDateInput(value: string | undefined, side: "start" | "end") {
+  if (!value) return null;
+  const suffix = side === "start" ? "T00:00:00+03:00" : "T23:59:59+03:00";
+  const date = new Date(`${value}${suffix}`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function inputDate(date: Date) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kuwait",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).format(date);
+}
+
+function dateRangeWhere(range: ReportRange, field: string) {
+  if (range.isAllTime || !range.start || !range.end) return {};
+  return { [field]: { gte: range.start, lte: range.end } };
+}
+
+function inRange(date: Date | null | undefined, range: ReportRange) {
+  if (range.isAllTime || !range.start || !range.end) return true;
+  if (!date) return false;
+  return date >= range.start && date <= range.end;
+}
+
+function messageDate(message: {
+  status: EmailMessageStatus;
+  createdAt: Date;
+  sentAt: Date | null;
+  failedAt: Date | null;
+  skippedAt: Date | null;
+}) {
+  if (message.status === EmailMessageStatus.SENT) return message.sentAt;
+  if (message.status === EmailMessageStatus.FAILED) return message.failedAt;
+  if (message.status === EmailMessageStatus.SKIPPED) return message.skippedAt;
+  return message.createdAt;
 }
 
 function Metric({

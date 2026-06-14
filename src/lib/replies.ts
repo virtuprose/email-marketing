@@ -221,6 +221,23 @@ export function analyzeReplyLocally({
     };
   }
 
+  if (looksLikeAutomatedNonSalesMessage(text)) {
+    return {
+      intent: ReplyIntent.NON_SALES,
+      sentiment: ReplySentiment.NEUTRAL,
+      confidence: 100,
+      summary: "Rule matched a vendor, newsletter, platform, activation, or system email.",
+      suggestedAction: "Ignore this message. It is not a sales lead reply.",
+      ownerActionRequired: false,
+      autoReplyEligible: false,
+      riskFlags: ["Rule match: system or marketing email."],
+      leadStatus: LeadStatus.REPLIED,
+      scoreIntent: 0,
+      scoreEngagement: 0,
+      dealStage: DealStage.REPLIED
+    };
+  }
+
   if (isSimpleGreetingText(bodyText)) {
     return {
       intent: ReplyIntent.GENERAL_INTEREST,
@@ -447,14 +464,24 @@ export function generateLocalReplyDraft({
 
   const text = (english: string, arabic: string) => (isArabic ? arabic : english);
 
-  if (analysis.intent === ReplyIntent.UNSUBSCRIBE || analysis.intent === ReplyIntent.COMPLAINT) {
+  if (
+    analysis.intent === ReplyIntent.NON_SALES ||
+    analysis.intent === ReplyIntent.UNSUBSCRIBE ||
+    analysis.intent === ReplyIntent.COMPLAINT
+  ) {
     return {
       provider: "local-reply-agent",
       model: REPLY_POLICY_VERSION,
       subject,
-      bodyText: "No reply should be sent. The lead must be suppressed.",
+      bodyText:
+        analysis.intent === ReplyIntent.NON_SALES
+          ? "No reply should be sent. This is not a sales lead reply."
+          : "No reply should be sent. The lead must be suppressed.",
       confidence: analysis.confidence,
-      rationale: "The reply indicates opt-out or complaint risk.",
+      rationale:
+        analysis.intent === ReplyIntent.NON_SALES
+          ? "The reply was rule-matched as a vendor, newsletter, platform, activation, or system email."
+          : "The reply indicates opt-out or complaint risk.",
       riskFlags: ["Blocked by reply policy."]
     };
   }
@@ -881,17 +908,21 @@ export async function processInboundReply(replyId: string, knownOffer?: Offer | 
   });
   const availableMeetingSlots = await findAvailableMeetingSlots(3);
   const analysis = await analyzeReplyWithAiFallback(reply, offer, settings, conversationMemory);
+  const shouldIgnoreAsNonSales = analysis.intent === ReplyIntent.NON_SALES;
   const shouldSuppress =
     analysis.intent === ReplyIntent.UNSUBSCRIBE || analysis.intent === ReplyIntent.COMPLAINT;
-  const draft = await generateReplyDraftWithAiFallback({
-    reply,
-    lead,
-    offer,
-    analysis,
-    settings,
-    conversationMemory,
-    availableMeetingSlots
-  });
+  const draft =
+    shouldIgnoreAsNonSales
+      ? null
+      : await generateReplyDraftWithAiFallback({
+          reply,
+          lead,
+          offer,
+          analysis,
+          settings,
+          conversationMemory,
+          availableMeetingSlots
+        });
   const stopped = await stopQueuedFollowUpsForLead(lead.id, reply.campaignId);
   const stoppedWhatsapp = await stopQueuedWhatsappMessagesForLead(lead.id, reply.whatsappMessage?.campaignId);
   const nextActionAt = nextActionForAnalysis(analysis);
@@ -987,66 +1018,70 @@ export async function processInboundReply(replyId: string, knownOffer?: Offer | 
       });
     }
 
-    const createdDraft = await tx.aiReplyDraft.create({
-      data: {
-        replyId: reply.id,
-        channel: reply.channel,
-        leadId: lead.id,
-        campaignId: reply.campaignId,
-        offerId: offer?.id ?? null,
-        status: shouldSuppress ? AiReplyDraftStatus.BLOCKED : AiReplyDraftStatus.DRAFT,
-        provider: draft.provider,
-        model: draft.model,
-        subject: draft.subject,
-        bodyText: draft.bodyText,
-        confidence: draft.confidence,
-        rationale: draft.rationale,
-        riskFlags: [...draft.riskFlags, ...(settings.mode === "TEST_MODE" ? ["Test Mode is on."] : [])],
-        policyVersion: REPLY_POLICY_VERSION
-      }
-    });
-    createdDraftId = createdDraft.id;
-
-    await tx.emailEvent.create({
-      data: {
-        type: EmailEventType.AI_REPLY_DRAFTED,
-        messageId: reply.emailMessageId,
-        campaignId: reply.campaignId,
-        leadId: lead.id,
-        metadata: {
+    if (draft) {
+      const createdDraft = await tx.aiReplyDraft.create({
+        data: {
           replyId: reply.id,
-          intent: analysis.intent,
-          confidence: analysis.confidence,
-          blocked: shouldSuppress
+          channel: reply.channel,
+          leadId: lead.id,
+          campaignId: reply.campaignId,
+          offerId: offer?.id ?? null,
+          status: shouldSuppress ? AiReplyDraftStatus.BLOCKED : AiReplyDraftStatus.DRAFT,
+          provider: draft.provider,
+          model: draft.model,
+          subject: draft.subject,
+          bodyText: draft.bodyText,
+          confidence: draft.confidence,
+          rationale: draft.rationale,
+          riskFlags: [...draft.riskFlags, ...(settings.mode === "TEST_MODE" ? ["Test Mode is on."] : [])],
+          policyVersion: REPLY_POLICY_VERSION
         }
-      }
-    });
+      });
+      createdDraftId = createdDraft.id;
 
-    await tx.deal.upsert({
-      where: { leadId: lead.id },
-      update: {
-        campaignId: reply.campaignId,
-        offerId: offer?.id ?? undefined,
-        stage: analysis.dealStage,
-        status: terminalNegativeIntents.has(analysis.intent) ? DealStatus.PAUSED : DealStatus.OPEN,
-        priorityScore: analysis.scoreIntent,
-        nextAction: analysis.suggestedAction,
-        nextActionAt,
-        lastReplyId: reply.id
-      },
-      create: {
-        leadId: lead.id,
-        campaignId: reply.campaignId,
-        offerId: offer?.id ?? undefined,
-        title: dealTitle(lead, offer),
-        stage: analysis.dealStage,
-        status: terminalNegativeIntents.has(analysis.intent) ? DealStatus.PAUSED : DealStatus.OPEN,
-        priorityScore: analysis.scoreIntent,
-        nextAction: analysis.suggestedAction,
-        nextActionAt,
-        lastReplyId: reply.id
-      }
-    });
+      await tx.emailEvent.create({
+        data: {
+          type: EmailEventType.AI_REPLY_DRAFTED,
+          messageId: reply.emailMessageId,
+          campaignId: reply.campaignId,
+          leadId: lead.id,
+          metadata: {
+            replyId: reply.id,
+            intent: analysis.intent,
+            confidence: analysis.confidence,
+            blocked: shouldSuppress
+          }
+        }
+      });
+
+      await tx.deal.upsert({
+        where: { leadId: lead.id },
+        update: {
+          campaignId: reply.campaignId,
+          offerId: offer?.id ?? undefined,
+          stage: analysis.dealStage,
+          status: terminalNegativeIntents.has(analysis.intent) ? DealStatus.PAUSED : DealStatus.OPEN,
+          priorityScore: analysis.scoreIntent,
+          nextAction: analysis.suggestedAction,
+          nextActionAt,
+          lastReplyId: reply.id
+        },
+        create: {
+          leadId: lead.id,
+          campaignId: reply.campaignId,
+          offerId: offer?.id ?? undefined,
+          title: dealTitle(lead, offer),
+          stage: analysis.dealStage,
+          status: terminalNegativeIntents.has(analysis.intent) ? DealStatus.PAUSED : DealStatus.OPEN,
+          priorityScore: analysis.scoreIntent,
+          nextAction: analysis.suggestedAction,
+          nextActionAt,
+          lastReplyId: reply.id
+        }
+      });
+    } else {
+      await tx.deal.deleteMany({ where: { lastReplyId: reply.id } });
+    }
 
     await tx.auditLog.create({
       data: {
@@ -1604,6 +1639,10 @@ async function analyzeReplyWithAiFallback(
     return fallback;
   }
 
+  if (fallback.intent === ReplyIntent.NON_SALES) {
+    return fallback;
+  }
+
   if (!apiKey) return fallback;
 
   try {
@@ -1626,6 +1665,7 @@ async function analyzeReplyWithAiFallback(
               "Output only JSON.",
               "Detect whether the customer is writing in English or Arabic. Use GCC-friendly interpretation for Arabic sales enquiries.",
               "Classify the sales stage separately in your reasoning: new enquiry, interested, qualified lead, meeting requested, meeting booked, not interested, or follow-up required.",
+              "If the message is a newsletter, account activation, platform update, automated system notification, vendor marketing email, or internal Virtuprose email, classify it as NON_SALES with neutral sentiment, confidence 100 only when a deterministic rule match is evident, ownerActionRequired false, autoReplyEligible false, and recommend no sales reply.",
               "Prioritize booking/contact capture when intent is serious, but do not ask for every detail at once.",
               "HOT_LEAD, PRICING_REQUEST, and MEETING_REQUEST should usually be autoReplyEligible true and ownerActionRequired false when the message can be answered safely. They should still notify the owner through intent.",
               "Only set ownerActionRequired true when the user asks to stop, complains, sends unsafe content, asks for unsupported promises, or the intent is too unclear.",
@@ -1761,7 +1801,12 @@ async function generateReplyDraftWithAiFallback({
   const model = process.env.OPENAI_REPLY_MODEL || "gpt-4.1-mini";
   const detectedLanguage = detectConversationLanguage(reply.bodyText);
 
-  if (!apiKey || analysis.intent === ReplyIntent.UNSUBSCRIBE || analysis.intent === ReplyIntent.COMPLAINT) {
+  if (
+    !apiKey ||
+    analysis.intent === ReplyIntent.NON_SALES ||
+    analysis.intent === ReplyIntent.UNSUBSCRIBE ||
+    analysis.intent === ReplyIntent.COMPLAINT
+  ) {
     return fallback;
   }
 
@@ -2153,6 +2198,7 @@ function isWithinWhatsappServiceWindow(serviceWindowExpiresAt: Date | null | und
 }
 
 function replyStatusForAnalysis(analysis: ReplyAnalysis) {
+  if (analysis.intent === ReplyIntent.NON_SALES) return ReplyStatus.CLOSED;
   if (analysis.intent === ReplyIntent.UNSUBSCRIBE || analysis.intent === ReplyIntent.COMPLAINT) {
     return ReplyStatus.SUPPRESSED;
   }
@@ -2162,6 +2208,7 @@ function replyStatusForAnalysis(analysis: ReplyAnalysis) {
 }
 
 function nextActionForAnalysis(analysis: ReplyAnalysis) {
+  if (analysis.intent === ReplyIntent.NON_SALES) return null;
   if (analysis.intent === ReplyIntent.OUT_OF_OFFICE) {
     return new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
   }
@@ -2199,6 +2246,79 @@ function cryptoSafeContactId() {
 
 function matchesAny(text: string, terms: string[]) {
   return terms.some((term) => text.includes(term));
+}
+
+export function isSystemOrMarketingReply({
+  fromEmail,
+  subject,
+  bodyText,
+  raw
+}: {
+  fromEmail?: string | null;
+  subject?: string | null;
+  bodyText?: string | null;
+  raw?: Prisma.JsonValue | null;
+}) {
+  const rawText = raw ? JSON.stringify(raw).toLowerCase() : "";
+  const sender = (fromEmail || "").toLowerCase();
+  const text = `${sender}\n${subject || ""}\n${bodyText || ""}\n${rawText}`.toLowerCase();
+  return looksLikeAutomatedNonSalesMessage(text);
+}
+
+function looksLikeAutomatedNonSalesMessage(text: string) {
+  return matchesAny(text, [
+    "apify",
+    "account activation",
+    "your account has been activated",
+    "actors now work where you do",
+    "thanks for registering",
+    "welcome to lead411",
+    "lead411",
+    "lead 411",
+    "lead411.com",
+    "mailjet",
+    "mailgun",
+    "sendgrid",
+    "hubspot",
+    "jio business",
+    "jio.enterprise",
+    "spring updates",
+    "mcp connectors",
+    "connectors are here",
+    "launching mcp",
+    "general news",
+    "newsletter",
+    "weekly digest",
+    "product update",
+    "platform update",
+    "security alert",
+    "verify your email",
+    "confirm your email",
+    "password reset",
+    "billing notification",
+    "payment receipt",
+    "invoice",
+    "trial ended",
+    "webinar",
+    "join us for",
+    "view in your browser",
+    "view this email in your browser",
+    "unsubscribe from this list",
+    "unsubscribe",
+    "manage your email preferences",
+    "manage preferences",
+    "list-unsubscribe",
+    "bulk",
+    "x-mailer",
+    "precedence",
+    "html,body {",
+    "<!doctype html",
+    "<html",
+    "no-reply",
+    "noreply",
+    "donotreply",
+    "do-not-reply"
+  ]);
 }
 
 function extractOutputText(data: unknown) {

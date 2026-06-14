@@ -1,7 +1,7 @@
 import { CampaignObjective, LeadStatus } from "@prisma/client";
 import { ArrowLeft, WandSparkles } from "lucide-react";
 import Link from "next/link";
-import { createCampaign } from "@/app/actions";
+import { createCampaign, createWebsiteAuditOffer } from "@/app/actions";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
 import { objectiveLabels } from "@/lib/campaigns";
@@ -12,9 +12,13 @@ import { leadStatusLabels } from "@/lib/status";
 export const dynamic = "force-dynamic";
 
 export default async function NewCampaignPage() {
-  const [offers, leadCounts] = await Promise.all([
+  const [offers, leadCounts, leadGroups] = await Promise.all([
     prisma.offer.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
-    prisma.lead.groupBy({ by: ["status"], _count: { status: true } })
+    prisma.lead.groupBy({ by: ["status"], where: { deletedAt: null }, _count: { status: true } }),
+    prisma.leadGroup.findMany({
+      include: { _count: { select: { members: true } } },
+      orderBy: { name: "asc" }
+    })
   ]);
 
   const countsByStatus = new Map(leadCounts.map((item) => [item.status, item._count.status]));
@@ -134,6 +138,19 @@ export default async function NewCampaignPage() {
                   </label>
                 </div>
 
+                <label className="field">
+                  <span>Audience group</span>
+                  <select className="select" name="groupId" defaultValue="">
+                    <option value="">No group filter</option>
+                    {leadGroups.map((group) => (
+                      <option key={group.id} value={group.id}>
+                        {group.name} ({formatNumber(group._count.members)})
+                      </option>
+                    ))}
+                  </select>
+                  <small>Choose a named lead group to limit this campaign to that audience.</small>
+                </label>
+
                 <div className="alert">
                   You will review the message and approve it before anything is sent.
                 </div>
@@ -162,6 +179,38 @@ export default async function NewCampaignPage() {
             <Gate label="Every email includes an unsubscribe link" />
             <Gate label="Your sender details are saved" />
             <Gate label="The message avoids risky claims" />
+
+            <details className="advanced-settings">
+              <summary className="panel-summary">Create new service</summary>
+              <form action={createWebsiteAuditOffer} className="stack" style={{ marginTop: 12 }}>
+                <input type="hidden" name="returnTo" value="/campaigns/new" />
+                <label className="field">
+                  <span>Service name</span>
+                  <input className="input" name="name" required minLength={3} placeholder="Mobile App Development" />
+                </label>
+                <label className="field">
+                  <span>Who is this for?</span>
+                  <textarea
+                    className="textarea compact-textarea"
+                    name="targetAudience"
+                    required
+                    placeholder="Businesses with booking, ecommerce, delivery, loyalty, or repeat customer workflows."
+                  />
+                </label>
+                <label className="field">
+                  <span>What do we offer?</span>
+                  <textarea
+                    className="textarea compact-textarea"
+                    name="valueProposition"
+                    required
+                    placeholder="Virtuprose designs and builds a practical solution that improves customer action and reduces manual work."
+                  />
+                </label>
+                <button className="secondary-button" type="submit">
+                  Save service
+                </button>
+              </form>
+            </details>
           </div>
         </aside>
       </div>

@@ -589,6 +589,55 @@ h3 {
   border: 1px solid #efc3bb;
 }
 
+.danger-button:hover,
+.danger-button:focus-visible {
+  background: #ffe7e1;
+  border-color: #e39a8e;
+  transform: translateY(-1px);
+}
+
+.table-action-button {
+  min-height: 34px;
+  padding: 0 12px;
+  box-shadow: none;
+}
+
+.compact-button {
+  min-height: 34px;
+  padding: 0 12px;
+  box-shadow: none;
+}
+
+.inline-icon-button,
+.icon-danger-button {
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+  display: inline-grid;
+  place-items: center;
+  background: rgba(255, 253, 248, 0.88);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.icon-danger-button,
+.inline-icon-button:hover,
+.inline-icon-button:focus-visible,
+.icon-danger-button:hover,
+.icon-danger-button:focus-visible {
+  color: var(--state-danger);
+  border-color: #efc3bb;
+  background: #fff2ef;
+}
+
+.table-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
 .grid {
   display: grid;
   gap: 16px;
@@ -1517,7 +1566,9 @@ tr:last-child td {
 
 .email-template-create-panel {
   margin-top: 16px;
-  background: linear-gradient(135deg, rgba(8, 123, 127, 0.1), rgba(255, 250, 240, 0) 48%), var(--bg-elevated);
+  background:
+    linear-gradient(135deg, rgba(8, 123, 127, 0.1), rgba(255, 250, 240, 0) 48%),
+    var(--bg-elevated);
 }
 
 .email-template-create-form {
@@ -1722,7 +1773,16 @@ tr:last-child td {
 }
 
 .reply-work-item {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.reply-list-select {
+  min-width: 0;
+  display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  color: inherit;
 }
 
 .reply-list-item:hover,
@@ -1737,6 +1797,18 @@ tr:last-child td {
   border-color: rgba(8, 116, 111, 0.55);
   background: #eefbf8;
   box-shadow: inset 3px 0 0 var(--action-primary);
+}
+
+.group-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tag-active {
+  background: #e8f7f2;
+  color: var(--action-primary-strong);
+  border-color: rgba(8, 116, 111, 0.2);
 }
 
 .reply-list-main,
@@ -2362,6 +2434,7 @@ a.deal-contact-value:focus-visible {
 
   .reply-list-item,
   .reply-work-item,
+  .reply-list-select,
   .reply-send-form,
   .deal-card-head,
   .deal-contact-line,

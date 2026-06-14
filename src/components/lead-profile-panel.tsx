@@ -1,7 +1,9 @@
 import { LeadStatus, WhatsappLeadStatus } from "@prisma/client";
-import { updateLeadStatus } from "@/app/actions";
+import { deleteLead, updateLeadStatus } from "@/app/actions";
 import { formatDate } from "@/lib/format";
 import { leadStatusLabels, whatsappLeadStatusLabels } from "@/lib/status";
+import { Trash2 } from "lucide-react";
+import { ConfirmDialog } from "./confirm-dialog";
 import { StatusBadge } from "./status-badge";
 
 type LeadWithRelations = {
@@ -66,6 +68,27 @@ export function LeadProfilePanel({ lead }: { lead: LeadWithRelations | null }) {
             Save status
           </button>
         </form>
+        <ConfirmDialog
+          trigger={
+            <button className="danger-button" type="button">
+              <Trash2 size={16} aria-hidden="true" /> Remove lead
+            </button>
+          }
+          title="Remove this lead?"
+          description="This hides the lead from Leads, campaigns, reports, and future outreach while keeping history for audit."
+        >
+          <form action={deleteLead} className="stack">
+            <input type="hidden" name="leadId" value={lead.id} />
+            <input type="hidden" name="returnTo" value="/leads" />
+            <label className="field">
+              <span>Reason</span>
+              <input className="input" name="reason" placeholder="Not a lead, duplicate, wrong contact" />
+            </label>
+            <button className="danger-button" type="submit">
+              Remove lead
+            </button>
+          </form>
+        </ConfirmDialog>
 
         <div className="profile-list" aria-label="Lead details">
           <ProfileRow label="Company" value={lead.company} />

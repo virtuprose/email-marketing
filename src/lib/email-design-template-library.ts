@@ -10,10 +10,11 @@ import {
 } from "@/lib/email-designs";
 import { prisma } from "@/lib/prisma";
 
-export const EMAIL_DESIGN_SAMPLE_LEAD: Pick<Lead, "firstName" | "company" | "email"> = {
+export const EMAIL_DESIGN_SAMPLE_LEAD: Pick<Lead, "firstName" | "company" | "email" | "website"> = {
   firstName: "Sara",
   company: "Growth Studio",
-  email: "sara@example.com"
+  email: "sara@example.com",
+  website: "https://growthstudio.example"
 };
 
 export const EMAIL_DESIGN_SAMPLE_SUBJECT = "A practical automation idea for {{company}}";
@@ -34,9 +35,10 @@ export type EmailDesignTemplateRenderInput = {
   template: Pick<EmailDesignTemplate, "sanitizedHtml">;
   subject: string;
   body: string;
-  lead?: Pick<Lead, "firstName" | "company" | "email"> | null;
+  lead?: Pick<Lead, "firstName" | "company" | "email" | "website"> | null;
   senderName: string;
   unsubscribeUrl: string;
+  personalization?: unknown;
   preheader?: string;
 };
 
@@ -89,7 +91,8 @@ export function renderEmailDesignTemplateHtml(input: EmailDesignTemplateRenderIn
     body: input.body,
     lead,
     senderName: input.senderName,
-    unsubscribeUrl: input.unsubscribeUrl
+    unsubscribeUrl: input.unsubscribeUrl,
+    personalization: input.personalization
   });
 
   return {
@@ -112,14 +115,16 @@ export function renderPlainEmailPreviewHtml({
   body,
   lead,
   senderName,
-  unsubscribeUrl
+  unsubscribeUrl,
+  personalization
 }: Omit<EmailDesignTemplateRenderInput, "template" | "preheader">) {
   const rendered = renderCampaignCopyForTemplate({
     subject,
     body,
     lead: lead ?? EMAIL_DESIGN_SAMPLE_LEAD,
     senderName,
-    unsubscribeUrl
+    unsubscribeUrl,
+    personalization
   });
 
   return {
@@ -141,20 +146,24 @@ function renderCampaignCopyForTemplate({
   body,
   lead,
   senderName,
-  unsubscribeUrl
+  unsubscribeUrl,
+  personalization
 }: {
   subject: string;
   body: string;
-  lead: Pick<Lead, "firstName" | "company" | "email">;
+  lead: Pick<Lead, "firstName" | "company" | "email" | "website">;
   senderName: string;
   unsubscribeUrl: string;
+  personalization?: unknown;
 }) {
   const replacements: Record<string, string> = {
     "{{first_name}}": lead.firstName || "there",
     "{{company}}": lead.company || "your company",
+    "{{website}}": lead.website || "their website",
     "{{sender_name}}": senderName,
     "{{recipient_email}}": lead.email,
-    "{{unsubscribe_url}}": unsubscribeUrl
+    "{{unsubscribe_url}}": unsubscribeUrl,
+    ...personalizationReplacements(personalization)
   };
 
   let renderedSubject = subject;
@@ -168,6 +177,25 @@ function renderCampaignCopyForTemplate({
     subject: renderedSubject,
     bodyText: renderedBody
   };
+}
+
+function personalizationReplacements(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const record = value as Record<string, unknown>;
+  const allowed = [
+    "audit_pain_point",
+    "audit_evidence",
+    "recommended_improvement",
+    "mobile_app_signal",
+    "service_name",
+    "audit_email_subject",
+    "audit_email_body"
+  ];
+  const replacements: Record<string, string> = {};
+  for (const key of allowed) {
+    replacements[`{{${key}}}`] = String(record[key] ?? "").trim();
+  }
+  return replacements;
 }
 
 function escapeHtml(value: string) {

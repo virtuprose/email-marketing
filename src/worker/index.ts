@@ -6,15 +6,18 @@ import {
   AI_REPLY_QUEUE_NAME,
   EMAIL_QUEUE_NAME,
   FOUNDATION_QUEUE_NAME,
+  WEBSITE_AUDIT_QUEUE_NAME,
   WHATSAPP_QUEUE_NAME,
   redisConnection,
   type AiReplyJobData,
   type EmailSendJobData,
   type FoundationJobData,
+  type WebsiteAuditJobData,
   type WhatsappSendJobData
 } from "@/lib/queue";
 import { sendAiReplyDraft } from "@/lib/replies";
 import { processEmailMessage } from "@/lib/sending";
+import { processWebsiteAuditCandidate } from "@/lib/website-audit";
 import { processWhatsappMessage } from "@/lib/whatsapp";
 
 const worker = new Worker<FoundationJobData>(
@@ -91,6 +94,21 @@ const aiReplyWorker = new Worker<AiReplyJobData>(
   }
 );
 
+const websiteAuditWorker = new Worker<WebsiteAuditJobData>(
+  WEBSITE_AUDIT_QUEUE_NAME,
+  async (job) => {
+    if (job.name !== "website-audit.check") {
+      throw new Error(`Unsupported website audit job: ${job.name}`);
+    }
+
+    return processWebsiteAuditCandidate(job.data.candidateId);
+  },
+  {
+    connection: redisConnection(),
+    concurrency: 2
+  }
+);
+
 let imapPoller: NodeJS.Timeout | null = null;
 if (imapReplyInboxConfigured()) {
   const intervalMs = emailReplyPollSeconds() * 1000;
@@ -120,6 +138,10 @@ aiReplyWorker.on("ready", () => {
   console.log(`Worker ready on queue "${AI_REPLY_QUEUE_NAME}"`);
 });
 
+websiteAuditWorker.on("ready", () => {
+  console.log(`Worker ready on queue "${WEBSITE_AUDIT_QUEUE_NAME}"`);
+});
+
 worker.on("completed", (job) => {
   console.log(`Completed job ${job.name}#${job.id}`);
 });
@@ -134,6 +156,7 @@ process.on("SIGINT", async () => {
   await emailWorker.close();
   await whatsappWorker.close();
   await aiReplyWorker.close();
+  await websiteAuditWorker.close();
   await prisma.$disconnect();
   process.exit(0);
 });
@@ -144,6 +167,7 @@ process.on("SIGTERM", async () => {
   await emailWorker.close();
   await whatsappWorker.close();
   await aiReplyWorker.close();
+  await websiteAuditWorker.close();
   await prisma.$disconnect();
   process.exit(0);
 });

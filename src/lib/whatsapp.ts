@@ -32,6 +32,7 @@ export type WhatsappAudienceFilter = {
   status: LeadStatus | "ALL";
   tag?: string;
   country?: string;
+  groupId?: string;
   maxRecipients: number;
 };
 
@@ -118,6 +119,7 @@ export function verifyMetaWebhookChallenge(searchParams: URLSearchParams) {
 
 export function whatsappAudienceWhere(filter: WhatsappAudienceFilter): Prisma.LeadWhereInput {
   return {
+    deletedAt: null,
     phoneE164: { not: null },
     whatsappOptIn: true,
     whatsappStatus: WhatsappLeadStatus.OPTED_IN,
@@ -127,7 +129,8 @@ export function whatsappAudienceWhere(filter: WhatsappAudienceFilter): Prisma.Le
         ? { notIn: blockedLeadStatuses }
         : { equals: filter.status, notIn: blockedLeadStatuses },
     ...(filter.country ? { country: { contains: filter.country, mode: "insensitive" } } : {}),
-    ...(filter.tag ? { tags: { some: { name: { equals: filter.tag, mode: "insensitive" } } } } : {})
+    ...(filter.tag ? { tags: { some: { name: { equals: filter.tag, mode: "insensitive" } } } } : {}),
+    ...(filter.groupId ? { groups: { some: { groupId: filter.groupId } } } : {})
   };
 }
 
@@ -194,8 +197,12 @@ function renderMappedValue(mappingValue: string, lead: Lead, offer: Offer) {
 }
 
 export function whatsappReadyReason(
-  lead: Pick<Lead, "phoneE164" | "whatsappOptIn" | "whatsappStatus" | "whatsappStoppedAt" | "status">
+  lead: Pick<
+    Lead,
+    "phoneE164" | "whatsappOptIn" | "whatsappStatus" | "whatsappStoppedAt" | "status" | "deletedAt"
+  >
 ) {
+  if (lead.deletedAt) return "Lead was removed from active outreach.";
   if (!lead.phoneE164) return "Missing WhatsApp phone.";
   if (!lead.whatsappOptIn) return "WhatsApp opt-in is not recorded.";
   if (lead.whatsappStatus !== WhatsappLeadStatus.OPTED_IN) return "WhatsApp status is not opted in.";

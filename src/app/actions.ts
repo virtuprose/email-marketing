@@ -6,6 +6,8 @@ import {
   CampaignReviewSeverity,
   CampaignStatus,
   DealStage,
+  DealStatus,
+  AiReplyDraftStatus,
   EmailDesignValidationStatus,
   EmailMessageStatus,
   ImportRowStatus,
@@ -15,14 +17,20 @@ import {
   MeetingSlotStatus,
   MessageChannel,
   Prisma,
+  ReplyIntent,
+  ReplySentiment,
+  ReplyStatus,
   SalesLeadStage,
   SendJobStatus,
   SuppressionReason,
+  WebsiteAuditCandidateStatus,
+  WebsiteAuditRunStatus,
   WhatsappCampaignStatus,
   WhatsappEventType,
   WhatsappTemplateCategory,
   WhatsappTemplateStatus,
   WhatsappMessageStatus,
+  WhatsappRecipientStatus,
   type Lead
 } from "@prisma/client";
 import { revalidatePath } from "next/cache";
@@ -32,9 +40,13 @@ import {
   campaignHasBlockers,
   generateCampaignSequenceForOffer,
   reviewCampaign,
-  type AudienceFilter,
   type OfferForGeneration
 } from "@/lib/campaigns";
+import {
+  blockedLeadStatuses,
+  emailAudienceWhere,
+  type LeadAudienceFilter
+} from "@/lib/audience";
 import { linesToArray } from "@/lib/format";
 import { normalizeEmail, isValidEmail } from "@/lib/imports";
 import { prisma } from "@/lib/prisma";
@@ -48,7 +60,8 @@ import {
   processInboundReply,
   resumeAiForLead,
   sendAiReplyDraft,
-  updateDealStage
+  updateDealStage,
+  isSystemOrMarketingReply
 } from "@/lib/replies";
 import {
   AI_ASSISTANT_LAST_TEST_KEY,
@@ -87,6 +100,18 @@ import {
   whatsappAudienceWhere,
   type WhatsappAudienceFilter
 } from "@/lib/whatsapp";
+import {
+  DEFAULT_WEBSITE_AUDIT_LEGAL_BASIS,
+  DEFAULT_WEBSITE_AUDIT_SOURCE,
+  WEBSITE_AUDIT_MAX_PAGES,
+  WEBSITE_AUDIT_MAX_URLS,
+  campaignStepForWebsiteAudit,
+  dedupeWebsiteRows,
+  parseWebsiteRows,
+  queueWebsiteAuditRun,
+  refreshWebsiteAuditRunCounts,
+  websiteAuditPersonalization
+} from "@/lib/website-audit";
 
 const offerSchema = z.object({
   name: z.string().min(3),
@@ -103,7 +128,44 @@ const campaignSchema = z.object({
   status: z.nativeEnum(LeadStatus).or(z.literal("ALL")),
   tag: z.string().optional(),
   country: z.string().optional(),
+  groupId: z.string().optional(),
   maxRecipients: z.coerce.number().int().min(1).max(5000)
+});
+
+const websiteAuditOfferSchema = z.object({
+  name: z.string().min(3),
+  targetAudience: z.string().min(5),
+  valueProposition: z.string().min(5),
+  returnTo: z.string().optional().or(z.literal(""))
+});
+
+const websiteAuditRunSchema = z.object({
+  name: z.string().min(3),
+  selectedOfferId: z.string().min(1),
+  websitesText: z.string().optional().or(z.literal("")),
+  country: z.string().min(2),
+  source: z.string().optional().or(z.literal("")),
+  legalBasis: z.string().optional().or(z.literal("")),
+  maxPagesPerSite: z.coerce.number().int().min(1).max(WEBSITE_AUDIT_MAX_PAGES)
+});
+
+const websiteAuditCandidateSchema = z.object({
+  candidateId: z.string().min(1),
+  decision: z.enum(["SAVE", "APPROVE", "REJECT"]),
+  companyName: z.string().optional().or(z.literal("")),
+  email: z.string().optional().or(z.literal("")),
+  recommendedServiceName: z.string().optional().or(z.literal("")),
+  mobileAppScore: z.coerce.number().int().min(0).max(100),
+  painPoints: z.string().optional().or(z.literal("")),
+  missingFeatures: z.string().optional().or(z.literal("")),
+  mobileAppSignals: z.string().optional().or(z.literal("")),
+  generatedSubject: z.string().optional().or(z.literal("")),
+  generatedBody: z.string().optional().or(z.literal(""))
+});
+
+const websiteAuditRunIdSchema = z.object({
+  runId: z.string().min(1),
+  campaignName: z.string().min(3).optional()
 });
 
 const campaignLeadComplianceSchema = z.object({
@@ -184,6 +246,49 @@ const replyIdSchema = z.object({
   replyId: z.string().min(1)
 });
 
+const deleteReplySchema = z.object({
+  replyId: z.string().min(1),
+  returnTo: z.string().optional().or(z.literal("")),
+  deleteLinkedLead: z.preprocess((value) => value === "on" || value === "true", z.boolean()).default(false)
+});
+
+const deleteCampaignSchema = z.object({
+  campaignId: z.string().min(1),
+  returnTo: z.string().optional().or(z.literal(""))
+});
+
+const deleteLeadSchema = z.object({
+  leadId: z.string().min(1),
+  returnTo: z.string().optional().or(z.literal("")),
+  reason: z.string().optional().or(z.literal(""))
+});
+
+const removeHotLeadSchema = z.object({
+  dealId: z.string().min(1),
+  returnTo: z.string().optional().or(z.literal("")),
+  deleteLinkedLead: z.preprocess((value) => value === "on" || value === "true", z.boolean()).default(false)
+});
+
+const leadGroupSchema = z.object({
+  name: z.string().trim().min(2).max(80),
+  description: z.string().trim().max(240).optional().or(z.literal("")),
+  leadIds: z.array(z.string()).default([])
+});
+
+const addLeadGroupMembersSchema = z.object({
+  groupId: z.string().min(1),
+  leadIds: z.array(z.string()).min(1)
+});
+
+const removeLeadGroupMemberSchema = z.object({
+  groupId: z.string().min(1),
+  leadId: z.string().min(1)
+});
+
+const deleteLeadGroupSchema = z.object({
+  groupId: z.string().min(1)
+});
+
 const leadAiControlSchema = z.object({
   leadId: z.string().min(1),
   replyId: z.string().optional().or(z.literal("")),
@@ -248,6 +353,7 @@ const whatsappCampaignSchema = z.object({
   status: z.nativeEnum(LeadStatus).or(z.literal("ALL")),
   tag: z.string().optional(),
   country: z.string().optional(),
+  groupId: z.string().optional(),
   maxRecipients: z.coerce.number().int().min(1).max(5000),
   dailyCap: z.coerce.number().int().min(1).max(500),
   sendWindowStart: z.string().optional(),
@@ -257,13 +363,6 @@ const whatsappCampaignSchema = z.object({
 const whatsappCampaignIdSchema = z.object({
   campaignId: z.string().min(1)
 });
-
-const blockedLeadStatuses: LeadStatus[] = [
-  LeadStatus.SUPPRESSED,
-  LeadStatus.UNSUBSCRIBED,
-  LeadStatus.BOUNCED,
-  LeadStatus.DO_NOT_CONTACT
-];
 
 export type AiAssistantSettingsFormValues = {
   enabled: boolean;
@@ -319,17 +418,6 @@ function offerForGeneration(offer: OfferForGeneration) {
   return offer;
 }
 
-function audienceWhere(filter: AudienceFilter): Prisma.LeadWhereInput {
-  return {
-    status:
-      filter.status === "ALL"
-        ? { notIn: blockedLeadStatuses }
-        : { equals: filter.status, notIn: blockedLeadStatuses },
-    ...(filter.country ? { country: { contains: filter.country, mode: "insensitive" } } : {}),
-    ...(filter.tag ? { tags: { some: { name: { equals: filter.tag, mode: "insensitive" } } } } : {})
-  };
-}
-
 function parseManualSlotDate(value: string, timezone: string) {
   const trimmed = value.trim();
   if (/[zZ]$|[+-]\d{2}:\d{2}$/.test(trimmed)) return new Date(trimmed);
@@ -354,6 +442,107 @@ function parseKuwaitDateTimeLocal(value: string) {
 async function getComplianceSettings(tx: Prisma.TransactionClient | typeof prisma = prisma) {
   const setting = await tx.setting.findUnique({ where: { key: COMPLIANCE_SETTINGS_KEY } });
   return parseComplianceSettings(setting?.value);
+}
+
+async function softDeleteLead(
+  tx: Prisma.TransactionClient | typeof prisma,
+  leadId: string,
+  reason = "Removed by operator"
+) {
+  const existing = await tx.lead.findUnique({
+    where: { id: leadId },
+    select: { id: true, email: true, phoneE164: true, company: true, deletedAt: true }
+  });
+  if (!existing) throw new Error("Lead not found.");
+
+  const deletedAt = existing.deletedAt ?? new Date();
+  const deletedReason = reason.trim() || "Removed by operator";
+
+  await tx.lead.update({
+    where: { id: leadId },
+    data: {
+      deletedAt,
+      deletedReason,
+      status: LeadStatus.SUPPRESSED,
+      aiAutoReplyPaused: true,
+      aiAutoReplyPausedAt: new Date(),
+      aiAutoReplyPauseReason: "Lead was removed from active outreach."
+    }
+  });
+
+  await tx.emailMessage.updateMany({
+    where: {
+      leadId,
+      status: { in: [EmailMessageStatus.QUEUED, EmailMessageStatus.SENDING] }
+    },
+    data: {
+      status: EmailMessageStatus.SKIPPED,
+      skippedAt: new Date(),
+      error: "Lead was removed from active outreach."
+    }
+  });
+
+  await tx.campaignRecipient.updateMany({
+    where: {
+      leadId,
+      status: { in: [CampaignRecipientStatus.DRAFT, CampaignRecipientStatus.READY, CampaignRecipientStatus.QUEUED] }
+    },
+    data: {
+      status: CampaignRecipientStatus.SKIPPED,
+      reason: "Lead was removed from active outreach."
+    }
+  });
+
+  await tx.whatsappMessage.updateMany({
+    where: {
+      leadId,
+      status: { in: [WhatsappMessageStatus.QUEUED, WhatsappMessageStatus.SENDING] }
+    },
+    data: {
+      status: WhatsappMessageStatus.SKIPPED,
+      skippedAt: new Date(),
+      error: "Lead was removed from active outreach."
+    }
+  });
+
+  await tx.whatsappCampaignRecipient.updateMany({
+    where: {
+      leadId,
+      status: { in: [WhatsappRecipientStatus.READY, WhatsappRecipientStatus.QUEUED] }
+    },
+    data: {
+      status: WhatsappRecipientStatus.SKIPPED,
+      reason: "Lead was removed from active outreach."
+    }
+  });
+
+  await tx.deal.updateMany({
+    where: { leadId, status: DealStatus.OPEN },
+    data: { status: DealStatus.PAUSED }
+  });
+
+  await tx.leadEvent.create({
+    data: {
+      leadId,
+      type: LeadEventType.SUPPRESSED,
+      message: `Lead removed from active outreach: ${deletedReason}`,
+      metadata: { softDelete: true, deletedAt: deletedAt.toISOString() }
+    }
+  });
+
+  await tx.auditLog.create({
+    data: {
+      action: existing.deletedAt ? "lead.delete_requested_again" : "lead.soft_deleted",
+      entityType: "lead",
+      entityId: leadId,
+      metadata: {
+        email: existing.email,
+        phoneE164: existing.phoneE164,
+        company: existing.company,
+        reason: deletedReason
+      }
+    }
+  });
 }
 
 async function buildCampaignReviewItems(
@@ -548,6 +737,440 @@ export async function toggleOfferActive(formData: FormData) {
   revalidatePath("/offers");
 }
 
+export async function createWebsiteAuditOffer(formData: FormData) {
+  const parsed = websiteAuditOfferSchema.parse({
+    name: formData.get("name"),
+    targetAudience: formData.get("targetAudience"),
+    valueProposition: formData.get("valueProposition"),
+    returnTo: String(formData.get("returnTo") ?? "").trim()
+  });
+
+  const offer = await prisma.offer.create({
+    data: {
+      name: parsed.name,
+      targetAudience: parsed.targetAudience,
+      valueProposition: parsed.valueProposition,
+      painPoints: linesToArray(formData.get("painPoints")),
+      proofPoints: linesToArray(formData.get("proofPoints")),
+      servicesIncluded: linesToArray(formData.get("servicesIncluded")).length
+        ? linesToArray(formData.get("servicesIncluded"))
+        : [parsed.name],
+      ctaStyle:
+        String(formData.get("ctaStyle") ?? "").trim() ||
+        "Offer a short website review with practical improvement ideas.",
+      disallowedClaims: linesToArray(formData.get("disallowedClaims")).length
+        ? linesToArray(formData.get("disallowedClaims"))
+        : ["Guaranteed revenue", "Guaranteed ranking", "Guaranteed leads"],
+      aiVoiceRules:
+        String(formData.get("aiVoiceRules") ?? "").trim() ||
+        "Specific, helpful, low-pressure, and based only on visible website evidence."
+    }
+  });
+
+  await prisma.auditLog.create({
+    data: {
+      action: "website_audit.offer_created",
+      entityType: "offer",
+      entityId: offer.id,
+      metadata: { name: offer.name }
+    }
+  });
+
+  revalidatePath("/offers");
+  revalidatePath("/campaigns/website-audits/new");
+  const returnTo = parsed.returnTo && parsed.returnTo.startsWith("/") ? parsed.returnTo : "/campaigns/website-audits/new";
+  redirect(`${returnTo}${returnTo.includes("?") ? "&" : "?"}offerId=${offer.id}`);
+}
+
+export async function createWebsiteAuditRun(formData: FormData) {
+  const parsed = websiteAuditRunSchema.parse({
+    name: formData.get("name"),
+    selectedOfferId: formData.get("selectedOfferId"),
+    websitesText: String(formData.get("websitesText") ?? ""),
+    country: formData.get("country"),
+    source: String(formData.get("source") ?? "").trim(),
+    legalBasis: String(formData.get("legalBasis") ?? "").trim(),
+    maxPagesPerSite: formData.get("maxPagesPerSite")
+  });
+
+  const file = formData.get("websitesFile");
+  const fileText = file instanceof File && file.size ? await file.text() : "";
+  const websites = dedupeWebsiteRows(
+    [...parseWebsiteRows(parsed.websitesText ?? ""), ...parseWebsiteRows(fileText)],
+    WEBSITE_AUDIT_MAX_URLS
+  );
+  if (!websites.length) throw new Error("Add at least one valid website URL.");
+
+  const offer = await prisma.offer.findUnique({ where: { id: parsed.selectedOfferId } });
+  if (!offer || !offer.active) throw new Error("Choose an active service before starting a website audit.");
+
+  const run = await prisma.$transaction(async (tx) => {
+    const created = await tx.websiteAuditRun.create({
+      data: {
+        name: parsed.name,
+        status: WebsiteAuditRunStatus.DRAFT,
+        source: parsed.source || DEFAULT_WEBSITE_AUDIT_SOURCE,
+        country: parsed.country,
+        legalBasis: parsed.legalBasis || DEFAULT_WEBSITE_AUDIT_LEGAL_BASIS,
+        selectedOfferId: offer.id,
+        maxPagesPerSite: parsed.maxPagesPerSite,
+        totalCandidates: websites.length,
+        candidates: {
+          create: websites.map((website) => {
+            const email = normalizeEmail(website.email || "");
+            return {
+              websiteUrl: website.websiteUrl,
+              normalizedDomain: website.normalizedDomain,
+              companyName: website.company || null,
+              email: email && isValidEmail(email) ? email : null,
+              country: website.country || parsed.country,
+              suggestedOfferId: offer.id,
+              status: WebsiteAuditCandidateStatus.PENDING
+            };
+          })
+        }
+      }
+    });
+
+    await tx.auditLog.create({
+      data: {
+        action: "website_audit.run_created",
+        entityType: "website_audit_run",
+        entityId: created.id,
+        metadata: {
+          websites: websites.length,
+          offerId: offer.id,
+          source: parsed.source || DEFAULT_WEBSITE_AUDIT_SOURCE
+        }
+      }
+    });
+
+    return created;
+  });
+
+  await queueWebsiteAuditRun(run.id);
+
+  revalidatePath("/campaigns");
+  revalidatePath("/campaigns/website-audits");
+  redirect(`/campaigns/website-audits/${run.id}`);
+}
+
+export async function updateWebsiteAuditCandidate(formData: FormData) {
+  const parsed = websiteAuditCandidateSchema.parse({
+    candidateId: formData.get("candidateId"),
+    decision: formData.get("decision"),
+    companyName: String(formData.get("companyName") ?? "").trim(),
+    email: String(formData.get("email") ?? "").trim(),
+    recommendedServiceName: String(formData.get("recommendedServiceName") ?? "").trim(),
+    mobileAppScore: formData.get("mobileAppScore"),
+    painPoints: String(formData.get("painPoints") ?? ""),
+    missingFeatures: String(formData.get("missingFeatures") ?? ""),
+    mobileAppSignals: String(formData.get("mobileAppSignals") ?? ""),
+    generatedSubject: String(formData.get("generatedSubject") ?? "").trim(),
+    generatedBody: String(formData.get("generatedBody") ?? "").trim()
+  });
+
+  const candidate = await prisma.websiteAuditCandidate.findUnique({ where: { id: parsed.candidateId } });
+  if (!candidate) throw new Error("Website audit lead was not found.");
+
+  const email = normalizeEmail(parsed.email || "");
+  if (parsed.decision === "APPROVE" && !isValidEmail(email)) {
+    throw new Error("Add a valid business email before approving this lead.");
+  }
+  if (parsed.decision === "APPROVE" && (!parsed.generatedSubject || !parsed.generatedBody)) {
+    throw new Error("Add an email subject and message before approving this lead.");
+  }
+
+  const status =
+    parsed.decision === "REJECT"
+      ? WebsiteAuditCandidateStatus.REJECTED
+      : parsed.decision === "APPROVE"
+        ? WebsiteAuditCandidateStatus.APPROVED
+        : candidate.status;
+
+  await prisma.websiteAuditCandidate.update({
+    where: { id: candidate.id },
+    data: {
+      status,
+      companyName: parsed.companyName || null,
+      email: email || null,
+      recommendedServiceName: parsed.recommendedServiceName || null,
+      mobileAppScore: parsed.mobileAppScore,
+      painPoints: linesToArray(parsed.painPoints ?? ""),
+      missingFeatures: linesToArray(parsed.missingFeatures ?? ""),
+      mobileAppSignals: linesToArray(parsed.mobileAppSignals ?? ""),
+      generatedSubject: parsed.generatedSubject || null,
+      generatedBody: parsed.generatedBody || null,
+      error: status === WebsiteAuditCandidateStatus.APPROVED ? null : candidate.error
+    }
+  });
+
+  await refreshWebsiteAuditRunCounts(candidate.runId);
+  await prisma.auditLog.create({
+    data: {
+      action: "website_audit.candidate_updated",
+      entityType: "website_audit_candidate",
+      entityId: candidate.id,
+      metadata: { status }
+    }
+  });
+
+  revalidatePath("/campaigns/website-audits");
+  revalidatePath(`/campaigns/website-audits/${candidate.runId}`);
+}
+
+export async function approveAllWebsiteAuditCandidates(formData: FormData) {
+  const parsed = websiteAuditRunIdSchema.parse({ runId: formData.get("runId") });
+  const candidates = await prisma.websiteAuditCandidate.findMany({
+    where: {
+      runId: parsed.runId,
+      status: { in: [WebsiteAuditCandidateStatus.AUDITED, WebsiteAuditCandidateStatus.NEEDS_REVIEW] }
+    },
+    select: { id: true, email: true, generatedSubject: true, generatedBody: true }
+  });
+  const approvableIds = candidates
+    .filter(
+      (candidate) =>
+        candidate.email &&
+        isValidEmail(normalizeEmail(candidate.email)) &&
+        candidate.generatedSubject &&
+        candidate.generatedBody
+    )
+    .map((candidate) => candidate.id);
+
+  if (approvableIds.length) {
+    await prisma.websiteAuditCandidate.updateMany({
+      where: { id: { in: approvableIds } },
+      data: { status: WebsiteAuditCandidateStatus.APPROVED, error: null }
+    });
+  }
+
+  await refreshWebsiteAuditRunCounts(parsed.runId);
+  await prisma.auditLog.create({
+    data: {
+      action: "website_audit.candidates_approved",
+      entityType: "website_audit_run",
+      entityId: parsed.runId,
+      metadata: { approved: approvableIds.length }
+    }
+  });
+
+  revalidatePath("/campaigns/website-audits");
+  revalidatePath(`/campaigns/website-audits/${parsed.runId}`);
+}
+
+export async function createCampaignFromWebsiteAuditRun(formData: FormData) {
+  const parsed = websiteAuditRunIdSchema.parse({
+    runId: formData.get("runId"),
+    campaignName: String(formData.get("campaignName") ?? "").trim() || undefined
+  });
+
+  const run = await prisma.websiteAuditRun.findUnique({
+    where: { id: parsed.runId },
+    include: {
+      selectedOffer: true,
+      candidates: {
+        where: { status: WebsiteAuditCandidateStatus.APPROVED },
+        orderBy: { createdAt: "asc" }
+      }
+    }
+  });
+  if (!run) throw new Error("Website audit run was not found.");
+  if (!run.selectedOffer) throw new Error("Choose a service before creating the campaign.");
+
+  const selectedCandidates = run.candidates.filter(
+    (candidate) => candidate.email && isValidEmail(candidate.email)
+  );
+  if (!selectedCandidates.length) throw new Error("Approve at least one lead with a valid email.");
+
+  const sequence = campaignStepForWebsiteAudit();
+  const offer = run.selectedOffer;
+  const campaignId = await prisma.$transaction(async (tx) => {
+    const recipients: Array<{ leadId: string; personalization: Prisma.InputJsonObject }> = [];
+
+    for (const candidate of selectedCandidates) {
+      const email = normalizeEmail(candidate.email);
+      if (!isValidEmail(email)) continue;
+
+      const [existing, suppression] = await Promise.all([
+        tx.lead.findUnique({ where: { email } }),
+        tx.suppressionEntry.findUnique({ where: { email } })
+      ]);
+      if (suppression || (existing && blockedLeadStatuses.includes(existing.status))) {
+        await tx.websiteAuditCandidate.update({
+          where: { id: candidate.id },
+          data: {
+            status: WebsiteAuditCandidateStatus.NEEDS_REVIEW,
+            error: "This email is on the Do Not Contact list or has an unsafe contact status."
+          }
+        });
+        continue;
+      }
+
+      const lead = existing
+        ? await tx.lead.update({
+            where: { id: existing.id },
+            data: {
+              company: existing.company || candidate.companyName || undefined,
+              website: existing.website || candidate.websiteUrl,
+              country: existing.country || candidate.country || run.country || undefined,
+              source: existing.source || run.source,
+              sourceUrl: existing.sourceUrl || candidate.websiteUrl,
+              legalBasis: existing.legalBasis || run.legalBasis || DEFAULT_WEBSITE_AUDIT_LEGAL_BASIS,
+              consentNotes:
+                existing.consentNotes || `Website audit reviewed public pages on ${candidate.websiteUrl}.`,
+              status: existing.status === LeadStatus.NEW ? LeadStatus.VALIDATED : existing.status,
+              serviceNeeded: existing.serviceNeeded || candidate.recommendedServiceName || offer.name
+            }
+          })
+        : await tx.lead.create({
+            data: {
+              email,
+              company: candidate.companyName || null,
+              website: candidate.websiteUrl,
+              country: candidate.country || run.country,
+              source: run.source,
+              sourceUrl: candidate.websiteUrl,
+              legalBasis: run.legalBasis || DEFAULT_WEBSITE_AUDIT_LEGAL_BASIS,
+              consentNotes: `Website audit reviewed public pages on ${candidate.websiteUrl}.`,
+              status: LeadStatus.VALIDATED,
+              serviceNeeded: candidate.recommendedServiceName || offer.name,
+              tags: {
+                create: [{ name: "website-audit" }]
+              },
+              events: {
+                create: {
+                  type: LeadEventType.IMPORTED,
+                  message: `Lead added from website audit: ${run.name}`,
+                  metadata: { websiteAuditRunId: run.id, candidateId: candidate.id }
+                }
+              }
+            }
+          });
+
+      await tx.leadTag.upsert({
+        where: { leadId_name: { leadId: lead.id, name: "website-audit" } },
+        update: {},
+        create: { leadId: lead.id, name: "website-audit" }
+      });
+
+      recipients.push({
+        leadId: lead.id,
+        personalization: websiteAuditPersonalization({
+          candidate,
+          offer
+        }) as unknown as Prisma.InputJsonObject
+      });
+      await tx.websiteAuditCandidate.update({
+        where: { id: candidate.id },
+        data: { leadId: lead.id }
+      });
+    }
+
+    if (!recipients.length) throw new Error("No approved leads can be contacted.");
+
+    const campaign = await tx.campaign.create({
+      data: {
+        name: parsed.campaignName || `${run.name} email campaign`,
+        objective: sequence.objective,
+        offerId: offer.id,
+        audienceFilter: {
+          source: run.source,
+          websiteAuditRunId: run.id,
+          approvedOnly: true
+        } as Prisma.InputJsonObject,
+        estimatedRecipients: recipients.length,
+        personalizationFields: [
+          "first_name",
+          "company",
+          "website",
+          "audit_pain_point",
+          "audit_evidence",
+          "recommended_improvement",
+          "mobile_app_signal",
+          "sender_name",
+          "unsubscribe_url"
+        ],
+        riskFlags: ["Website audit campaign requires owner review before sending."],
+        claimsUsed: offer.proofPoints.slice(0, 2),
+        aiConfidence: 82,
+        aiExplanation: "Created from approved website audit findings and per-lead personalization evidence.",
+        steps: {
+          create: [
+            {
+              stepOrder: 1,
+              delayDays: 0,
+              subject: sequence.subject,
+              body: sequence.body
+            },
+            {
+              stepOrder: 2,
+              delayDays: sequence.followUp.delayDays,
+              subject: sequence.followUp.subject,
+              body: sequence.followUp.body
+            }
+          ]
+        },
+        variants: {
+          create: {
+            name: "Website audit",
+            subject: sequence.subject,
+            body: sequence.body
+          }
+        },
+        recipients: {
+          create: recipients.map((recipient) => ({
+            leadId: recipient.leadId,
+            status: CampaignRecipientStatus.READY,
+            personalization: recipient.personalization
+          }))
+        },
+        aiGenerations: {
+          create: {
+            provider: "website-audit",
+            model: "website-audit-v1",
+            prompt: {
+              runId: run.id,
+              offerId: offer.id,
+              objective: CampaignObjective.AUDIT_OFFER
+            },
+            output: sequence as unknown as Prisma.InputJsonObject,
+            confidence: 82
+          }
+        }
+      }
+    });
+
+    await tx.websiteAuditCandidate.updateMany({
+      where: { id: { in: selectedCandidates.map((candidate) => candidate.id) }, leadId: { not: null } },
+      data: { status: WebsiteAuditCandidateStatus.CONVERTED, campaignId: campaign.id, error: null }
+    });
+    await tx.websiteAuditRun.update({
+      where: { id: run.id },
+      data: { status: WebsiteAuditRunStatus.CONVERTED, campaignId: campaign.id }
+    });
+
+    await replaceCampaignReview(campaign.id, tx);
+    await tx.auditLog.create({
+      data: {
+        action: "website_audit.campaign_created",
+        entityType: "campaign",
+        entityId: campaign.id,
+        metadata: { runId: run.id, recipients: recipients.length, offerId: offer.id }
+      }
+    });
+
+    return campaign.id;
+  });
+
+  await refreshWebsiteAuditRunCounts(run.id);
+
+  revalidatePath("/campaigns");
+  revalidatePath("/campaigns/website-audits");
+  revalidatePath(`/campaigns/website-audits/${run.id}`);
+  redirect(`/campaigns/${campaignId}`);
+}
+
 export async function createSuppressionEntry(formData: FormData) {
   const email = normalizeEmail(formData.get("email"));
   const reason = z.nativeEnum(SuppressionReason).parse(formData.get("reason"));
@@ -630,6 +1253,155 @@ export async function updateLeadStatus(formData: FormData) {
   });
 
   revalidatePath("/leads");
+}
+
+export async function deleteLead(formData: FormData) {
+  const parsed = deleteLeadSchema.parse({
+    leadId: formData.get("leadId"),
+    returnTo: String(formData.get("returnTo") ?? "").trim(),
+    reason: String(formData.get("reason") ?? "").trim()
+  });
+
+  await prisma.$transaction((tx) =>
+    softDeleteLead(tx, parsed.leadId, parsed.reason || "Removed from Leads by operator")
+  );
+
+  revalidatePath("/");
+  revalidatePath("/leads");
+  revalidatePath("/campaigns");
+  revalidatePath("/campaigns/new");
+  revalidatePath("/whatsapp/campaigns/new");
+  revalidatePath("/inbox");
+  revalidatePath("/pipeline");
+  revalidatePath("/reports");
+  redirect(parsed.returnTo || "/leads");
+}
+
+function selectedLeadIds(formData: FormData) {
+  return formData
+    .getAll("leadId")
+    .map((value) => String(value).trim())
+    .filter(Boolean);
+}
+
+export async function createLeadGroup(formData: FormData) {
+  const parsed = leadGroupSchema.parse({
+    name: formData.get("name"),
+    description: String(formData.get("description") ?? "").trim(),
+    leadIds: selectedLeadIds(formData)
+  });
+
+  const group = await prisma.$transaction(async (tx) => {
+    const created = await tx.leadGroup.create({
+      data: {
+        name: parsed.name,
+        description: parsed.description || null,
+        members: parsed.leadIds.length
+          ? {
+              createMany: {
+                data: parsed.leadIds.map((leadId) => ({ leadId })),
+                skipDuplicates: true
+              }
+            }
+          : undefined
+      }
+    });
+
+    await tx.auditLog.create({
+      data: {
+        action: "lead_group.created",
+        entityType: "lead_group",
+        entityId: created.id,
+        metadata: { name: created.name, members: parsed.leadIds.length }
+      }
+    });
+
+    return created;
+  });
+
+  revalidatePath("/leads");
+  revalidatePath("/campaigns/new");
+  revalidatePath("/whatsapp/campaigns/new");
+  redirect(`/leads?groupId=${group.id}`);
+}
+
+export async function addLeadsToGroup(formData: FormData) {
+  const parsed = addLeadGroupMembersSchema.parse({
+    groupId: formData.get("groupId"),
+    leadIds: selectedLeadIds(formData)
+  });
+
+  await prisma.$transaction(async (tx) => {
+    await tx.leadGroupMember.createMany({
+      data: parsed.leadIds.map((leadId) => ({ groupId: parsed.groupId, leadId })),
+      skipDuplicates: true
+    });
+    await tx.auditLog.create({
+      data: {
+        action: "lead_group.members_added",
+        entityType: "lead_group",
+        entityId: parsed.groupId,
+        metadata: { leads: parsed.leadIds.length }
+      }
+    });
+  });
+
+  revalidatePath("/leads");
+  revalidatePath("/campaigns/new");
+  revalidatePath("/whatsapp/campaigns/new");
+}
+
+export async function removeLeadFromGroup(formData: FormData) {
+  const parsed = removeLeadGroupMemberSchema.parse({
+    groupId: formData.get("groupId"),
+    leadId: formData.get("leadId")
+  });
+
+  await prisma.$transaction(async (tx) => {
+    await tx.leadGroupMember.deleteMany({
+      where: { groupId: parsed.groupId, leadId: parsed.leadId }
+    });
+    await tx.auditLog.create({
+      data: {
+        action: "lead_group.member_removed",
+        entityType: "lead_group",
+        entityId: parsed.groupId,
+        metadata: { leadId: parsed.leadId }
+      }
+    });
+  });
+
+  revalidatePath("/leads");
+  revalidatePath("/campaigns/new");
+  revalidatePath("/whatsapp/campaigns/new");
+}
+
+export async function deleteLeadGroup(formData: FormData) {
+  const parsed = deleteLeadGroupSchema.parse({
+    groupId: formData.get("groupId")
+  });
+
+  await prisma.$transaction(async (tx) => {
+    const group = await tx.leadGroup.findUnique({
+      where: { id: parsed.groupId },
+      select: { id: true, name: true, _count: { select: { members: true } } }
+    });
+    if (!group) throw new Error("Lead group not found.");
+    await tx.leadGroup.delete({ where: { id: parsed.groupId } });
+    await tx.auditLog.create({
+      data: {
+        action: "lead_group.deleted",
+        entityType: "lead_group",
+        entityId: group.id,
+        metadata: { name: group.name, members: group._count.members }
+      }
+    });
+  });
+
+  revalidatePath("/leads");
+  revalidatePath("/campaigns/new");
+  revalidatePath("/whatsapp/campaigns/new");
+  redirect("/leads");
 }
 
 export async function updateComplianceSettings(formData: FormData) {
@@ -1004,6 +1776,56 @@ export async function resumeCampaignSending(formData: FormData) {
   revalidatePath(`/campaigns/${campaignId}`);
 }
 
+export async function deleteCampaign(formData: FormData) {
+  const parsed = deleteCampaignSchema.parse({
+    campaignId: formData.get("campaignId"),
+    returnTo: String(formData.get("returnTo") ?? "").trim()
+  });
+
+  await prisma.$transaction(async (tx) => {
+    const campaign = await tx.campaign.findUnique({
+      where: { id: parsed.campaignId },
+      include: {
+        _count: {
+          select: {
+            recipients: true,
+            steps: true,
+            emailMessages: true,
+            inboundReplies: true,
+            sendJobs: true
+          }
+        }
+      }
+    });
+    if (!campaign) throw new Error("Campaign not found.");
+
+    await tx.campaign.delete({ where: { id: campaign.id } });
+    await tx.auditLog.create({
+      data: {
+        action: "campaign.deleted",
+        entityType: "campaign",
+        entityId: campaign.id,
+        metadata: {
+          name: campaign.name,
+          status: campaign.status,
+          recipients: campaign._count.recipients,
+          steps: campaign._count.steps,
+          emailMessages: campaign._count.emailMessages,
+          inboundReplies: campaign._count.inboundReplies,
+          sendJobs: campaign._count.sendJobs
+        }
+      }
+    });
+  });
+
+  revalidatePath("/");
+  revalidatePath("/campaigns");
+  revalidatePath("/reports");
+  revalidatePath("/inbox");
+  revalidatePath("/pipeline");
+  redirect(parsed.returnTo || "/campaigns");
+}
+
 export async function createCampaign(formData: FormData) {
   const parsed = campaignSchema.parse({
     name: formData.get("name"),
@@ -1012,13 +1834,15 @@ export async function createCampaign(formData: FormData) {
     status: formData.get("status"),
     tag: String(formData.get("tag") ?? "").trim() || undefined,
     country: String(formData.get("country") ?? "").trim() || undefined,
+    groupId: String(formData.get("groupId") ?? "").trim() || undefined,
     maxRecipients: formData.get("maxRecipients")
   });
 
-  const filter: AudienceFilter = {
+  const filter: LeadAudienceFilter = {
     status: parsed.status,
     tag: parsed.tag,
     country: parsed.country,
+    groupId: parsed.groupId,
     maxRecipients: parsed.maxRecipients
   };
 
@@ -1026,7 +1850,7 @@ export async function createCampaign(formData: FormData) {
   if (!offer || !offer.active) throw new Error("Select an active offer before creating a campaign.");
 
   const leads = await prisma.lead.findMany({
-    where: audienceWhere(filter),
+    where: emailAudienceWhere(filter),
     orderBy: { createdAt: "desc" },
     take: filter.maxRecipients
   });
@@ -1225,18 +2049,21 @@ export async function sendCampaignEmailDesignTest(formData: FormData) {
   if (!campaign || !campaign.steps.length) throw new Error("Campaign email copy is missing.");
   if (!account) throw new Error("Sending account not found.");
 
-  const sampleLead: Pick<Lead, "firstName" | "company" | "email"> = campaign.recipients[0]?.lead ?? {
+  const sampleLead: Pick<Lead, "firstName" | "company" | "email" | "website"> = campaign.recipients[0]?.lead ?? {
     firstName: "there",
     company: "your company",
-    email: parsed.to
+    email: parsed.to,
+    website: "https://example.com"
   };
+  const samplePersonalization = campaign.recipients[0]?.personalization;
   const unsubscribeUrl = compliance.unsubscribeUrl || `${appBaseUrl()}/unsubscribe/test-preview`;
   let rendered = renderEmailCopy({
     subject: campaign.steps[0].subject,
     body: campaign.steps[0].body,
     lead: sampleLead,
     senderName: account.fromName,
-    unsubscribeUrl
+    unsubscribeUrl,
+    personalization: samplePersonalization
   });
   let html: string | undefined;
   let selectedTemplateId: string | null = null;
@@ -1257,7 +2084,8 @@ export async function sendCampaignEmailDesignTest(formData: FormData) {
       body: campaign.steps[0].body,
       lead: sampleLead,
       senderName: account.fromName,
-      unsubscribeUrl
+      unsubscribeUrl,
+      personalization: samplePersonalization
     });
     rendered = { subject: designed.subject, bodyText: designed.bodyText };
     html = designed.bodyHtml;
@@ -1770,6 +2598,146 @@ export async function closeInboundReply(formData: FormData) {
   redirect(`/inbox?selected=${parsed.replyId}`);
 }
 
+export async function deleteInboundReply(formData: FormData) {
+  const parsed = deleteReplySchema.parse({
+    replyId: formData.get("replyId"),
+    returnTo: String(formData.get("returnTo") ?? "").trim(),
+    deleteLinkedLead: formData.get("deleteLinkedLead")
+  });
+
+  await prisma.$transaction(async (tx) => {
+    const reply = await tx.inboundReply.findUnique({
+      where: { id: parsed.replyId },
+      include: {
+        drafts: { select: { id: true } },
+        lead: { select: { id: true, email: true, phoneE164: true, company: true } },
+        campaign: { select: { id: true, name: true } }
+      }
+    });
+    if (!reply) throw new Error("Reply not found.");
+
+    const draftIds = reply.drafts.map((draft) => draft.id);
+    await tx.deal.updateMany({
+      where: { lastReplyId: reply.id },
+      data: { lastReplyId: null }
+    });
+    await tx.conversationMessage.deleteMany({
+      where: {
+        OR: [
+          { inboundReplyId: reply.id },
+          ...(draftIds.length ? [{ aiReplyDraftId: { in: draftIds } }] : [])
+        ]
+      }
+    });
+    await tx.inboundReply.delete({ where: { id: reply.id } });
+    if (parsed.deleteLinkedLead && reply.leadId) {
+      await softDeleteLead(tx, reply.leadId, "Reply and linked contact were deleted by operator");
+    }
+    await tx.auditLog.create({
+      data: {
+        action: parsed.deleteLinkedLead ? "reply.deleted_with_lead" : "reply.deleted",
+        entityType: "inbound_reply",
+        entityId: reply.id,
+        metadata: {
+          channel: reply.channel,
+          fromEmail: reply.fromEmail,
+          fromPhoneE164: reply.fromPhoneE164,
+          leadId: reply.leadId,
+          leadEmail: reply.lead?.email,
+          leadPhone: reply.lead?.phoneE164,
+          leadCompany: reply.lead?.company,
+          campaignId: reply.campaignId,
+          campaignName: reply.campaign?.name,
+          drafts: draftIds.length,
+          intent: reply.intent,
+          status: reply.status
+        }
+      }
+    });
+  });
+
+  revalidatePath("/");
+  revalidatePath("/inbox");
+  revalidatePath("/whatsapp/inbox");
+  revalidatePath("/pipeline");
+  revalidatePath("/reports");
+  revalidatePath("/leads");
+  revalidatePath("/campaigns/new");
+  revalidatePath("/whatsapp/campaigns/new");
+  redirect(parsed.returnTo || "/inbox");
+}
+
+export async function cleanSystemReplies() {
+  await prisma.$transaction(async (tx) => {
+    const candidates = await tx.inboundReply.findMany({
+      where: {
+        intent: { not: ReplyIntent.NON_SALES },
+        OR: [
+          { channel: MessageChannel.EMAIL },
+          { source: { contains: "imap", mode: "insensitive" } },
+          { source: { contains: "email", mode: "insensitive" } }
+        ]
+      },
+      include: { drafts: true },
+      orderBy: { receivedAt: "desc" },
+      take: 1000
+    });
+
+    const matches = candidates.filter((reply) =>
+      isSystemOrMarketingReply({
+        fromEmail: reply.fromEmail,
+        subject: reply.subject,
+        bodyText: reply.bodyText,
+        raw: reply.raw
+      })
+    );
+
+    for (const reply of matches) {
+      await tx.inboundReply.update({
+        where: { id: reply.id },
+        data: {
+          intent: ReplyIntent.NON_SALES,
+          sentiment: ReplySentiment.NEUTRAL,
+          aiConfidence: 100,
+          aiSummary: "Rule matched a vendor, newsletter, platform, activation, or system email.",
+          aiSuggestedAction: "Ignore this message. It is not a sales lead reply.",
+          ownerActionRequired: false,
+          autoReplyEligible: false,
+          status: ReplyStatus.CLOSED,
+          salesStage: SalesLeadStage.NOT_A_LEAD,
+          riskFlags: ["Rule match: system or marketing email."],
+        }
+      });
+      await tx.aiReplyDraft.updateMany({
+        where: { replyId: reply.id, status: { in: [AiReplyDraftStatus.DRAFT, AiReplyDraftStatus.APPROVED] } },
+        data: {
+          status: AiReplyDraftStatus.BLOCKED,
+          riskFlags: ["Blocked because this reply is a system or marketing email."]
+        }
+      });
+      await tx.deal.deleteMany({ where: { lastReplyId: reply.id } });
+    }
+
+    if (matches.length) {
+      await tx.auditLog.create({
+        data: {
+          action: "reply.system_cleanup",
+          entityType: "inbound_reply",
+          metadata: { cleaned: matches.length, checked: candidates.length }
+        }
+      });
+    }
+
+    return { cleaned: matches.length, checked: candidates.length };
+  });
+
+  revalidatePath("/");
+  revalidatePath("/inbox");
+  revalidatePath("/whatsapp/inbox");
+  revalidatePath("/pipeline");
+  revalidatePath("/reports");
+}
+
 export async function createMeetingSlot(formData: FormData) {
   const parsed = meetingSlotSchema.parse({
     startAt: formData.get("startAt"),
@@ -1949,6 +2917,51 @@ export async function updatePipelineDealStage(formData: FormData) {
   revalidatePath("/leads");
   revalidatePath("/pipeline");
   revalidatePath("/reports");
+}
+
+export async function removeHotLead(formData: FormData) {
+  const parsed = removeHotLeadSchema.parse({
+    dealId: formData.get("dealId"),
+    returnTo: String(formData.get("returnTo") ?? "").trim(),
+    deleteLinkedLead: formData.get("deleteLinkedLead")
+  });
+
+  await prisma.$transaction(async (tx) => {
+    const deal = await tx.deal.findUnique({
+      where: { id: parsed.dealId },
+      include: { lead: { select: { id: true, email: true, company: true } } }
+    });
+    if (!deal) throw new Error("Hot lead not found.");
+
+    await tx.deal.delete({ where: { id: deal.id } });
+
+    if (parsed.deleteLinkedLead) {
+      await softDeleteLead(tx, deal.leadId, "Removed from Hot Leads and linked contact deleted by operator");
+    }
+
+    await tx.auditLog.create({
+      data: {
+        action: parsed.deleteLinkedLead ? "deal.removed_with_lead" : "deal.removed",
+        entityType: "deal",
+        entityId: deal.id,
+        metadata: {
+          leadId: deal.leadId,
+          leadEmail: deal.lead.email,
+          leadCompany: deal.lead.company,
+          stage: deal.stage,
+          score: deal.priorityScore
+        }
+      }
+    });
+  });
+
+  revalidatePath("/");
+  revalidatePath("/leads");
+  revalidatePath("/pipeline");
+  revalidatePath("/reports");
+  revalidatePath("/campaigns/new");
+  revalidatePath("/whatsapp/campaigns/new");
+  redirect(parsed.returnTo || "/pipeline");
 }
 
 export async function rollbackImportBatch(formData: FormData) {
@@ -2195,6 +3208,7 @@ export async function createWhatsappCampaign(formData: FormData) {
     status: formData.get("status"),
     tag: String(formData.get("tag") ?? "").trim() || undefined,
     country: String(formData.get("country") ?? "").trim() || undefined,
+    groupId: String(formData.get("groupId") ?? "").trim() || undefined,
     maxRecipients: formData.get("maxRecipients"),
     dailyCap: formData.get("dailyCap"),
     sendWindowStart: String(formData.get("sendWindowStart") ?? "").trim() || undefined,
@@ -2208,6 +3222,7 @@ export async function createWhatsappCampaign(formData: FormData) {
     status: parsed.status,
     tag: parsed.tag,
     country: parsed.country,
+    groupId: parsed.groupId,
     maxRecipients: parsed.maxRecipients
   };
   const [offer, template] = await Promise.all([

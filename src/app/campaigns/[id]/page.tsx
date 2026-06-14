@@ -13,6 +13,7 @@ import {
   PlayCircle,
   Send,
   ShieldAlert,
+  Trash2,
   WandSparkles
 } from "lucide-react";
 import Link from "next/link";
@@ -20,6 +21,7 @@ import { notFound } from "next/navigation";
 import {
   approveCampaign,
   confirmCampaignLeadCompliance,
+  deleteCampaign,
   pauseCampaignSending,
   rescheduleCampaignQueuedEmails,
   resumeCampaignSending,
@@ -28,6 +30,7 @@ import {
   sendCampaignEmailDesignTest,
   updateCampaignContent
 } from "@/app/actions";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { EmailTemplatePreviewDialog } from "@/components/email-template-preview-dialog";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
@@ -79,15 +82,9 @@ const emailMessageInclude = {
   lead: true
 } satisfies Prisma.EmailMessageInclude;
 
-type CampaignDetail = Prisma.CampaignGetPayload<{
-  include: typeof campaignDetailInclude;
-}>;
-type SendJobDetail = Prisma.SendJobGetPayload<{
-  include: typeof sendJobInclude;
-}>;
-type EmailMessageDetail = Prisma.EmailMessageGetPayload<{
-  include: typeof emailMessageInclude;
-}>;
+type CampaignDetail = Prisma.CampaignGetPayload<{ include: typeof campaignDetailInclude }>;
+type SendJobDetail = Prisma.SendJobGetPayload<{ include: typeof sendJobInclude }>;
+type EmailMessageDetail = Prisma.EmailMessageGetPayload<{ include: typeof emailMessageInclude }>;
 type EmailDesignLibraryTemplate = Awaited<ReturnType<typeof getActiveEmailDesignTemplates>>[number];
 
 export default async function CampaignDetailPage({ params }: CampaignPageProps) {
@@ -123,8 +120,9 @@ export default async function CampaignDetailPage({ params }: CampaignPageProps) 
   const latestGeneration = campaign.aiGenerations[0];
   const blockers = campaign.reviews.filter((review) => review.severity === CampaignReviewSeverity.BLOCK);
   const warnings = campaign.reviews.filter((review) => review.severity === CampaignReviewSeverity.WARNING);
-  const sampleLead = campaign.recipients[0]?.lead;
-  const preview = renderPreview(campaign.steps[0]?.body ?? "", sampleLead, compliance);
+  const sampleRecipient = campaign.recipients[0];
+  const sampleLead = sampleRecipient?.lead;
+  const preview = renderPreview(campaign.steps[0]?.body ?? "", sampleLead, compliance, sampleRecipient?.personalization);
   const canApprove = blockers.length === 0 && campaign.status !== CampaignStatus.APPROVED;
   const latestJob = sendJobs[0];
   const activeJobStatuses: SendJobStatus[] = [
@@ -153,6 +151,7 @@ export default async function CampaignDetailPage({ params }: CampaignPageProps) 
     campaign,
     template: selectedTemplate,
     lead: sampleLead,
+    personalization: sampleRecipient?.personalization,
     senderName,
     unsubscribeUrl
   });
@@ -168,6 +167,23 @@ export default async function CampaignDetailPage({ params }: CampaignPageProps) 
             <Link className="secondary-button" href="/campaigns">
               <ArrowLeft size={16} aria-hidden="true" /> Back
             </Link>
+            <ConfirmDialog
+              trigger={
+                <button className="danger-button" type="button">
+                  <Trash2 size={16} aria-hidden="true" /> Delete campaign
+                </button>
+              }
+              title="Delete this campaign?"
+              description={`This removes "${campaign.name}" and its recipients, message records, reviews, and send jobs. Leads stay in the system.`}
+            >
+              <form action={deleteCampaign}>
+                <input type="hidden" name="campaignId" value={campaign.id} />
+                <input type="hidden" name="returnTo" value="/campaigns" />
+                <button className="danger-button" type="submit">
+                  Delete campaign
+                </button>
+              </form>
+            </ConfirmDialog>
             <form action={approveCampaign}>
               <input type="hidden" name="campaignId" value={campaign.id} />
               <button className="button" type="submit" disabled={!canApprove}>
@@ -881,33 +897,42 @@ function MiniMetric({ label, value }: { label: string; value: number }) {
 
 function renderPreview(
   copy: string,
-  lead: { firstName: string | null; company: string | null } | undefined,
-  compliance: { senderName?: string; unsubscribeUrl?: string }
+  lead: { firstName: string | null; company: string | null; website?: string | null } | undefined,
+  compliance: { senderName?: string; unsubscribeUrl?: string },
+  personalization?: unknown
 ) {
-  return copy
+  let rendered = copy
     .replaceAll("{{first_name}}", lead?.firstName || "there")
     .replaceAll("{{company}}", lead?.company || "your company")
+    .replaceAll("{{website}}", lead?.website || "")
     .replaceAll("{{sender_name}}", compliance.senderName || "Virtuprose")
     .replaceAll("{{unsubscribe_url}}", compliance.unsubscribeUrl || "https://virtuprose.com/unsubscribe");
+  for (const [token, value] of Object.entries(previewPersonalization(personalization))) {
+    rendered = rendered.replaceAll(token, value);
+  }
+  return rendered;
 }
 
 function renderCampaignEmailDesignPreview({
   campaign,
   template,
   lead,
+  personalization,
   senderName,
   unsubscribeUrl
 }: {
   campaign: CampaignDetail;
   template: CampaignDetail["selectedEmailDesignTemplate"];
-  lead: { firstName: string | null; company: string | null; email: string } | undefined;
+  lead: { firstName: string | null; company: string | null; email: string; website: string | null } | undefined;
+  personalization?: unknown;
   senderName: string;
   unsubscribeUrl: string;
 }) {
   const sampleLead = lead ?? {
     firstName: "there",
     company: "your company",
-    email: "lead@example.com"
+    email: "lead@example.com",
+    website: "https://example.com"
   };
   const firstStep = campaign.steps[0];
   if (!firstStep) {
@@ -925,7 +950,8 @@ function renderCampaignEmailDesignPreview({
       body: firstStep.body,
       lead: sampleLead,
       senderName,
-      unsubscribeUrl
+      unsubscribeUrl,
+      personalization
     });
   }
 
@@ -935,6 +961,26 @@ function renderCampaignEmailDesignPreview({
     body: firstStep.body,
     lead: sampleLead,
     senderName,
-    unsubscribeUrl
+    unsubscribeUrl,
+    personalization
   });
+}
+
+function previewPersonalization(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const record = value as Record<string, unknown>;
+  const allowed = [
+    "audit_pain_point",
+    "audit_evidence",
+    "recommended_improvement",
+    "mobile_app_signal",
+    "service_name",
+    "audit_email_subject",
+    "audit_email_body"
+  ];
+  const replacements: Record<string, string> = {};
+  for (const key of allowed) {
+    replacements[`{{${key}}}`] = String(record[key] ?? "").trim();
+  }
+  return replacements;
 }

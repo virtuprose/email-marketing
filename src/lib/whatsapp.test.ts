@@ -9,6 +9,7 @@ import {
   validateMetaWebhookSignature,
   verifyMetaWebhookChallenge,
   whatsappProfileNameForMessage,
+  whatsappAudienceWhere,
   whatsappReadyReason
 } from "./whatsapp";
 
@@ -79,9 +80,40 @@ describe("whatsapp helpers", () => {
         whatsappOptIn: false,
         whatsappStatus: WhatsappLeadStatus.UNKNOWN,
         whatsappStoppedAt: null,
-        status: LeadStatus.VALIDATED
+        status: LeadStatus.VALIDATED,
+        deletedAt: null
       })
     ).toContain("opt-in");
+  });
+
+  it("blocks WhatsApp sends for deleted leads", () => {
+    expect(
+      whatsappReadyReason({
+        phoneE164: "+96560000000",
+        whatsappOptIn: true,
+        whatsappStatus: WhatsappLeadStatus.OPTED_IN,
+        whatsappStoppedAt: null,
+        status: LeadStatus.VALIDATED,
+        deletedAt: new Date()
+      })
+    ).toContain("removed");
+  });
+
+  it("limits WhatsApp campaign audiences to active group members", () => {
+    expect(
+      whatsappAudienceWhere({
+        status: "ALL",
+        groupId: "group_123",
+        maxRecipients: 25
+      })
+    ).toMatchObject({
+      deletedAt: null,
+      groups: { some: { groupId: "group_123" } },
+      phoneE164: { not: null },
+      whatsappOptIn: true,
+      whatsappStatus: WhatsappLeadStatus.OPTED_IN,
+      whatsappStoppedAt: null
+    });
   });
 
   it("detects WhatsApp opt-out language", () => {

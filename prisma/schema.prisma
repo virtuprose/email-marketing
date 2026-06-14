@@ -87,6 +87,26 @@ enum CampaignReviewSeverity {
   BLOCK
 }
 
+enum WebsiteAuditRunStatus {
+  DRAFT
+  QUEUED
+  RUNNING
+  REVIEW_READY
+  CONVERTED
+  FAILED
+}
+
+enum WebsiteAuditCandidateStatus {
+  PENDING
+  CHECKING
+  AUDITED
+  NEEDS_REVIEW
+  APPROVED
+  REJECTED
+  CONVERTED
+  FAILED
+}
+
 enum EmailDesignValidationStatus {
   VALID
   BLOCKED
@@ -138,6 +158,7 @@ enum ReplyIntent {
   PORTFOLIO_REQUEST
   OBJECTION
   GENERAL_INTEREST
+  NON_SALES
   NOT_INTERESTED
   UNSUBSCRIBE
   OUT_OF_OFFICE
@@ -204,6 +225,7 @@ enum SalesLeadStage {
   QUALIFIED_LEAD
   MEETING_REQUESTED
   MEETING_BOOKED
+  NOT_A_LEAD
   NOT_INTERESTED
   FOLLOW_UP_REQUIRED
 }
@@ -330,23 +352,25 @@ model Setting {
 }
 
 model Offer {
-  id                String             @id @default(cuid())
-  name              String             @unique
-  targetAudience    String             @map("target_audience")
-  painPoints        String[]           @default([]) @map("pain_points")
-  valueProposition  String             @map("value_proposition")
-  proofPoints       String[]           @default([]) @map("proof_points")
-  servicesIncluded  String[]           @default([]) @map("services_included")
-  ctaStyle          String             @map("cta_style")
-  disallowedClaims  String[]           @default([]) @map("disallowed_claims")
-  aiVoiceRules      String             @map("ai_voice_rules")
-  active            Boolean            @default(true)
-  createdAt         DateTime           @default(now()) @map("created_at")
-  updatedAt         DateTime           @updatedAt @map("updated_at")
-  campaigns         Campaign[]
-  whatsappCampaigns WhatsappCampaign[]
-  aiReplyDrafts     AiReplyDraft[]
-  deals             Deal[]
+  id                     String                  @id @default(cuid())
+  name                   String                  @unique
+  targetAudience         String                  @map("target_audience")
+  painPoints             String[]                @default([]) @map("pain_points")
+  valueProposition       String                  @map("value_proposition")
+  proofPoints            String[]                @default([]) @map("proof_points")
+  servicesIncluded       String[]                @default([]) @map("services_included")
+  ctaStyle               String                  @map("cta_style")
+  disallowedClaims       String[]                @default([]) @map("disallowed_claims")
+  aiVoiceRules           String                  @map("ai_voice_rules")
+  active                 Boolean                 @default(true)
+  createdAt              DateTime                @default(now()) @map("created_at")
+  updatedAt              DateTime                @updatedAt @map("updated_at")
+  campaigns              Campaign[]
+  whatsappCampaigns      WhatsappCampaign[]
+  aiReplyDrafts          AiReplyDraft[]
+  deals                  Deal[]
+  websiteAuditRuns       WebsiteAuditRun[]       @relation("WebsiteAuditSelectedOffer")
+  websiteAuditCandidates WebsiteAuditCandidate[] @relation("WebsiteAuditSuggestedOffer")
 
   @@index([active])
   @@map("offers")
@@ -391,9 +415,12 @@ model Lead {
   scoreIntent                    Int                         @default(0) @map("score_intent")
   lastContactedAt                DateTime?                   @map("last_contacted_at")
   nextActionAt                   DateTime?                   @map("next_action_at")
+  deletedAt                      DateTime?                   @map("deleted_at")
+  deletedReason                  String?                     @map("deleted_reason")
   createdAt                      DateTime                    @default(now()) @map("created_at")
   updatedAt                      DateTime                    @updatedAt @map("updated_at")
   tags                           LeadTag[]
+  groups                         LeadGroupMember[]
   importRows                     ImportRow[]
   events                         LeadEvent[]
   campaignRecipients             CampaignRecipient[]
@@ -410,16 +437,42 @@ model Lead {
   conversationMessages           ConversationMessage[]
   meetingBookings                MeetingBooking[]
   bookedMeetingSlots             MeetingSlot[]
+  websiteAuditCandidates         WebsiteAuditCandidate[]
 
   @@index([status])
   @@index([phoneE164])
   @@index([whatsappStatus])
   @@index([whatsappOptIn])
   @@index([aiAutoReplyPaused])
+  @@index([deletedAt])
   @@index([company])
   @@index([source])
   @@index([country])
   @@map("leads")
+}
+
+model LeadGroup {
+  id          String            @id @default(cuid())
+  name        String            @unique
+  description String?
+  createdAt   DateTime          @default(now()) @map("created_at")
+  updatedAt   DateTime          @updatedAt @map("updated_at")
+  members     LeadGroupMember[]
+
+  @@map("lead_groups")
+}
+
+model LeadGroupMember {
+  id        String    @id @default(cuid())
+  groupId   String    @map("group_id")
+  leadId    String    @map("lead_id")
+  createdAt DateTime  @default(now()) @map("created_at")
+  group     LeadGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  lead      Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, leadId])
+  @@index([leadId])
+  @@map("lead_group_members")
 }
 
 model LeadTag {
@@ -512,24 +565,24 @@ model AuditLog {
 }
 
 model Campaign {
-  id                            String                @id @default(cuid())
+  id                            String                  @id @default(cuid())
   name                          String
   objective                     CampaignObjective
-  status                        CampaignStatus        @default(DRAFT)
-  offerId                       String                @map("offer_id")
-  audienceFilter                Json                  @map("audience_filter")
-  estimatedRecipients           Int                   @default(0) @map("estimated_recipients")
-  personalizationFields         String[]              @default([]) @map("personalization_fields")
-  riskFlags                     String[]              @default([]) @map("risk_flags")
-  claimsUsed                    String[]              @default([]) @map("claims_used")
-  aiConfidence                  Int                   @default(0) @map("ai_confidence")
-  aiExplanation                 String?               @map("ai_explanation")
-  selectedEmailDesignTemplateId String?               @map("selected_email_design_template_id")
-  approvedAt                    DateTime?             @map("approved_at")
-  createdAt                     DateTime              @default(now()) @map("created_at")
-  updatedAt                     DateTime              @updatedAt @map("updated_at")
-  offer                         Offer                 @relation(fields: [offerId], references: [id], onDelete: Restrict)
-  selectedEmailDesignTemplate   EmailDesignTemplate?  @relation("CampaignSelectedEmailDesign", fields: [selectedEmailDesignTemplateId], references: [id], onDelete: SetNull)
+  status                        CampaignStatus          @default(DRAFT)
+  offerId                       String                  @map("offer_id")
+  audienceFilter                Json                    @map("audience_filter")
+  estimatedRecipients           Int                     @default(0) @map("estimated_recipients")
+  personalizationFields         String[]                @default([]) @map("personalization_fields")
+  riskFlags                     String[]                @default([]) @map("risk_flags")
+  claimsUsed                    String[]                @default([]) @map("claims_used")
+  aiConfidence                  Int                     @default(0) @map("ai_confidence")
+  aiExplanation                 String?                 @map("ai_explanation")
+  selectedEmailDesignTemplateId String?                 @map("selected_email_design_template_id")
+  approvedAt                    DateTime?               @map("approved_at")
+  createdAt                     DateTime                @default(now()) @map("created_at")
+  updatedAt                     DateTime                @updatedAt @map("updated_at")
+  offer                         Offer                   @relation(fields: [offerId], references: [id], onDelete: Restrict)
+  selectedEmailDesignTemplate   EmailDesignTemplate?    @relation("CampaignSelectedEmailDesign", fields: [selectedEmailDesignTemplateId], references: [id], onDelete: SetNull)
   steps                         CampaignStep[]
   variants                      CampaignVariant[]
   recipients                    CampaignRecipient[]
@@ -542,6 +595,8 @@ model Campaign {
   inboundReplies                InboundReply[]
   aiReplyDrafts                 AiReplyDraft[]
   deals                         Deal[]
+  websiteAuditRun               WebsiteAuditRun?
+  websiteAuditCandidates        WebsiteAuditCandidate[]
 
   @@index([status])
   @@index([objective])
@@ -602,15 +657,16 @@ model CampaignVariant {
 }
 
 model CampaignRecipient {
-  id         String                  @id @default(cuid())
-  campaignId String                  @map("campaign_id")
-  leadId     String                  @map("lead_id")
-  status     CampaignRecipientStatus @default(DRAFT)
-  reason     String?
-  createdAt  DateTime                @default(now()) @map("created_at")
-  campaign   Campaign                @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  lead       Lead                    @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  messages   EmailMessage[]
+  id              String                  @id @default(cuid())
+  campaignId      String                  @map("campaign_id")
+  leadId          String                  @map("lead_id")
+  status          CampaignRecipientStatus @default(DRAFT)
+  reason          String?
+  personalization Json?                   @map("personalization")
+  createdAt       DateTime                @default(now()) @map("created_at")
+  campaign        Campaign                @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  lead            Lead                    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  messages        EmailMessage[]
 
   @@unique([campaignId, leadId])
   @@index([status])
@@ -645,6 +701,74 @@ model CampaignReview {
   @@index([campaignId])
   @@index([severity])
   @@map("campaign_reviews")
+}
+
+model WebsiteAuditRun {
+  id              String                  @id @default(cuid())
+  name            String
+  status          WebsiteAuditRunStatus   @default(DRAFT)
+  source          String                  @default("Website audit list")
+  country         String?
+  legalBasis      String?                 @map("legal_basis")
+  selectedOfferId String?                 @map("selected_offer_id")
+  campaignId      String?                 @unique @map("campaign_id")
+  maxPagesPerSite Int                     @default(5) @map("max_pages_per_site")
+  totalCandidates Int                     @default(0) @map("total_candidates")
+  auditedCount    Int                     @default(0) @map("audited_count")
+  approvedCount   Int                     @default(0) @map("approved_count")
+  rejectedCount   Int                     @default(0) @map("rejected_count")
+  failedCount     Int                     @default(0) @map("failed_count")
+  createdAt       DateTime                @default(now()) @map("created_at")
+  updatedAt       DateTime                @updatedAt @map("updated_at")
+  selectedOffer   Offer?                  @relation("WebsiteAuditSelectedOffer", fields: [selectedOfferId], references: [id], onDelete: SetNull)
+  campaign        Campaign?               @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  candidates      WebsiteAuditCandidate[]
+
+  @@index([status])
+  @@index([selectedOfferId])
+  @@map("website_audit_runs")
+}
+
+model WebsiteAuditCandidate {
+  id                     String                      @id @default(cuid())
+  runId                  String                      @map("run_id")
+  websiteUrl             String                      @map("website_url")
+  normalizedDomain       String                      @map("normalized_domain")
+  companyName            String?                     @map("company_name")
+  email                  String?
+  phone                  String?
+  country                String?
+  status                 WebsiteAuditCandidateStatus @default(PENDING)
+  confidence             Int                         @default(0)
+  suggestedOfferId       String?                     @map("suggested_offer_id")
+  recommendedServiceName String?                     @map("recommended_service_name")
+  mobileAppScore         Int                         @default(0) @map("mobile_app_score")
+  mobileAppSignals       String[]                    @default([]) @map("mobile_app_signals")
+  painPoints             String[]                    @default([]) @map("pain_points")
+  missingFeatures        String[]                    @default([]) @map("missing_features")
+  evidence               Json?
+  generatedSubject       String?                     @map("generated_subject")
+  generatedBody          String?                     @map("generated_body")
+  riskFlags              String[]                    @default([]) @map("risk_flags")
+  error                  String?
+  leadId                 String?                     @map("lead_id")
+  campaignId             String?                     @map("campaign_id")
+  checkedAt              DateTime?                   @map("checked_at")
+  createdAt              DateTime                    @default(now()) @map("created_at")
+  updatedAt              DateTime                    @updatedAt @map("updated_at")
+  run                    WebsiteAuditRun             @relation(fields: [runId], references: [id], onDelete: Cascade)
+  suggestedOffer         Offer?                      @relation("WebsiteAuditSuggestedOffer", fields: [suggestedOfferId], references: [id], onDelete: SetNull)
+  lead                   Lead?                       @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  campaign               Campaign?                   @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+
+  @@unique([runId, normalizedDomain])
+  @@index([runId])
+  @@index([status])
+  @@index([normalizedDomain])
+  @@index([suggestedOfferId])
+  @@index([leadId])
+  @@index([campaignId])
+  @@map("website_audit_candidates")
 }
 
 model SendingAccount {

@@ -87,4 +87,17 @@ describe("AI reply triage helpers", () => {
     expect(analysis.ownerActionRequired).toBe(false);
     expect(analysis.autoReplyEligible).toBe(true);
   });
+
+  it("does not treat vendor system emails as real sales replies", () => {
+    const analysis = analyzeReplyLocally({
+      subject: "Lead411 account activation confirmation",
+      bodyText:
+        "Hi Mohammad, your account has been activated with Lead411. View in your browser or manage your email preferences."
+    });
+
+    expect(analysis.intent).toBe(ReplyIntent.NON_SALES);
+    expect(analysis.confidence).toBe(100);
+    expect(analysis.ownerActionRequired).toBe(false);
+    expect(analysis.autoReplyEligible).toBe(false);
+  });
 });

@@ -13,6 +13,8 @@ import {
   SendJobStatus,
   SendingAccountStatus,
   SuppressionReason,
+  WebsiteAuditCandidateStatus,
+  WebsiteAuditRunStatus,
   WhatsappCampaignStatus,
   WhatsappLeadStatus,
   WhatsappMessageStatus,
@@ -74,6 +76,26 @@ export const campaignReviewSeverityLabels: Record<CampaignReviewSeverity, string
   BLOCK: "Blocker"
 };
 
+export const websiteAuditRunStatusLabels: Record<WebsiteAuditRunStatus, string> = {
+  DRAFT: "Draft",
+  QUEUED: "Waiting to check",
+  RUNNING: "Checking websites",
+  REVIEW_READY: "Ready to review",
+  CONVERTED: "Campaign created",
+  FAILED: "Needs review"
+};
+
+export const websiteAuditCandidateStatusLabels: Record<WebsiteAuditCandidateStatus, string> = {
+  PENDING: "Waiting",
+  CHECKING: "Checking",
+  AUDITED: "Ready to approve",
+  NEEDS_REVIEW: "Needs review",
+  APPROVED: "Approved",
+  REJECTED: "Rejected",
+  CONVERTED: "Added to campaign",
+  FAILED: "Could not check"
+};
+
 export const sendingAccountStatusLabels: Record<SendingAccountStatus, string> = {
   ACTIVE: "Active",
   PAUSED: "Paused",
@@ -105,6 +127,7 @@ export const replyIntentLabels: Record<ReplyIntent, string> = {
   PORTFOLIO_REQUEST: "Asked for examples",
   OBJECTION: "Has a question",
   GENERAL_INTEREST: "Interested",
+  NON_SALES: "Not a lead",
   NOT_INTERESTED: "Not interested",
   UNSUBSCRIBE: "Stop contacting",
   OUT_OF_OFFICE: "Out of office",
@@ -230,6 +253,8 @@ export function statusTone(
     | ReplyIntent
     | ReplySentiment
     | ReplyStatus
+    | WebsiteAuditRunStatus
+    | WebsiteAuditCandidateStatus
     | DealStage
     | DealStatus
     | WhatsappCampaignStatus
@@ -265,7 +290,9 @@ export function statusTone(
       "OPEN",
       "OPTED_IN",
       "DELIVERED",
-      "READ"
+      "READ",
+      "AUDITED",
+      "CONVERTED"
     ].includes(status)
   ) {
     return "success";
@@ -295,7 +322,9 @@ export function statusTone(
       "PAUSED",
       "UNKNOWN",
       "PENDING",
-      "READY"
+      "READY",
+      "CHECKING",
+      "NEEDS_REVIEW"
     ].includes(status)
   )
     return "warning";

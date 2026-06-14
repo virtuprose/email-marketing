@@ -56,7 +56,8 @@ const blockedLeadStatuses: LeadStatus[] = [
   LeadStatus.SUPPRESSED,
   LeadStatus.UNSUBSCRIBED,
   LeadStatus.BOUNCED,
-  LeadStatus.DO_NOT_CONTACT
+  LeadStatus.DO_NOT_CONTACT,
+  LeadStatus.LOST
 ];
 const EMAIL_LOGO_CID = "virtuprose-email-logo";
 const EMAIL_LOGO_PATH = path.join(process.cwd(), "public", "brand", "virtuprose-email-logo.png");
@@ -133,19 +134,23 @@ export function renderEmailCopy({
   body,
   lead,
   senderName,
-  unsubscribeUrl
+  unsubscribeUrl,
+  personalization
 }: {
   subject: string;
   body: string;
-  lead: Pick<Lead, "firstName" | "company" | "email">;
+  lead: Pick<Lead, "firstName" | "company" | "email" | "website">;
   senderName: string;
   unsubscribeUrl: string;
+  personalization?: unknown;
 }) {
   const replacements = {
     "{{first_name}}": lead.firstName || "there",
     "{{company}}": lead.company || "your company",
+    "{{website}}": lead.website || "",
     "{{sender_name}}": senderName,
-    "{{unsubscribe_url}}": unsubscribeUrl
+    "{{unsubscribe_url}}": unsubscribeUrl,
+    ...personalizationReplacements(personalization)
   };
 
   let renderedSubject = subject;
@@ -159,6 +164,28 @@ export function renderEmailCopy({
     subject: renderedSubject,
     bodyText: renderedBody
   };
+}
+
+function personalizationReplacements(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const record = value as Record<string, unknown>;
+  const allowed = [
+    "audit_pain_point",
+    "audit_evidence",
+    "recommended_improvement",
+    "mobile_app_signal",
+    "service_name",
+    "audit_email_subject",
+    "audit_email_body"
+  ];
+  const replacements: Record<string, string> = {};
+
+  for (const key of allowed) {
+    const replacement = String(record[key] ?? "").trim();
+    replacements[`{{${key}}}`] = replacement;
+  }
+
+  return replacements;
 }
 
 export async function scheduleCampaignSend(campaignId: string, sendingAccountId: string) {
@@ -249,7 +276,8 @@ export async function scheduleCampaignSend(campaignId: string, sendingAccountId:
           body: step.body,
           lead: recipient.lead,
           senderName: account.fromName,
-          unsubscribeUrl
+          unsubscribeUrl,
+          personalization: recipient.personalization
         });
         const renderedHtml = campaign.selectedEmailDesignTemplate
           ? renderCustomEmailHtml({
@@ -262,7 +290,7 @@ export async function scheduleCampaignSend(campaignId: string, sendingAccountId:
             })
           : null;
         const queuedAt = new Date(now.getTime() + step.delayDays * 24 * 60 * 60 * 1000);
-        const shouldSkip = blockedLeadStatuses.includes(recipient.lead.status);
+        const shouldSkip = Boolean(recipient.lead.deletedAt) || blockedLeadStatuses.includes(recipient.lead.status);
         const message = await tx.emailMessage.create({
           data: {
             sendJobId: sendJob.id,
@@ -294,7 +322,7 @@ export async function scheduleCampaignSend(campaignId: string, sendingAccountId:
             metadata: {
               stepOrder: step.stepOrder,
               queuedAt: queuedAt.toISOString(),
-              reason: shouldSkip ? "blocked_lead_status" : "scheduled"
+              reason: recipient.lead.deletedAt ? "lead_deleted" : shouldSkip ? "blocked_lead_status" : "scheduled"
             }
           }
         });
@@ -388,12 +416,14 @@ export async function processEmailMessage(messageId: string) {
   }
 
   const suppression = await prisma.suppressionEntry.findUnique({ where: { email: message.lead.email } });
-  if (blockedLeadStatuses.includes(message.lead.status) || suppression) {
+  if (message.lead.deletedAt || blockedLeadStatuses.includes(message.lead.status) || suppression) {
     await markMessageSkipped(
       message.id,
-      "Lead is suppressed, unsubscribed, bounced, or marked do-not-contact."
+      message.lead.deletedAt
+        ? "Lead was removed from active outreach."
+        : "Lead is suppressed, unsubscribed, bounced, or marked do-not-contact."
     );
-    return { ok: true, skipped: true, reason: "suppressed" };
+    return { ok: true, skipped: true, reason: message.lead.deletedAt ? "deleted_lead" : "suppressed" };
   }
 
   const rateLimit = await checkSendingLimits(

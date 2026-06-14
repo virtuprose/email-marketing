@@ -1,7 +1,13 @@
 import { DealStage, DealStatus, Prisma } from "@prisma/client";
-import { ArrowRight, Flame, Mail, MailCheck, Phone, Target, Trophy } from "lucide-react";
+import { ArrowRight, Flame, Mail, MailCheck, Phone, Target, Trash2, Trophy } from "lucide-react";
 import Link from "next/link";
-import { pauseAiForLeadAction, resumeAiForLeadAction, updatePipelineDealStage } from "@/app/actions";
+import {
+  pauseAiForLeadAction,
+  removeHotLead,
+  resumeAiForLeadAction,
+  updatePipelineDealStage
+} from "@/app/actions";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
 import { formatDate, formatNumber } from "@/lib/format";
@@ -36,13 +42,14 @@ const boardColumns: Array<{ title: string; stages: DealStage[] }> = [
 export default async function PipelinePage() {
   const [deals, hotDeals, openCount, wonCount] = await Promise.all([
     prisma.deal.findMany({
+      where: { lead: { deletedAt: null } },
       include: dealInclude,
       orderBy: [{ priorityScore: "desc" }, { updatedAt: "desc" }],
       take: 100
     }),
-    prisma.deal.count({ where: { stage: DealStage.HOT, status: DealStatus.OPEN } }),
-    prisma.deal.count({ where: { status: DealStatus.OPEN } }),
-    prisma.deal.count({ where: { status: DealStatus.WON } })
+    prisma.deal.count({ where: { stage: DealStage.HOT, status: DealStatus.OPEN, lead: { deletedAt: null } } }),
+    prisma.deal.count({ where: { status: DealStatus.OPEN, lead: { deletedAt: null } } }),
+    prisma.deal.count({ where: { status: DealStatus.WON, lead: { deletedAt: null } } })
   ]);
 
   return (
@@ -238,6 +245,29 @@ function DealCard({ deal }: { deal: DealWithRelations }) {
           Save lead
         </button>
       </form>
+
+      <ConfirmDialog
+        trigger={
+          <button className="danger-button" type="button">
+            <Trash2 size={16} aria-hidden="true" /> Remove from Hot Leads
+          </button>
+        }
+        title="Remove this hot lead?"
+        description="This removes the opportunity from Hot Leads. The contact stays in Leads unless you choose to remove it too."
+      >
+        <form action={removeHotLead} className="stack">
+          <input type="hidden" name="dealId" value={deal.id} />
+          <input type="hidden" name="returnTo" value="/pipeline" />
+          <label className="field checkbox-field">
+            <input name="deleteLinkedLead" type="checkbox" />
+            <span>Also remove linked contact/email from Leads</span>
+            <small>This soft-deletes the lead and blocks future outreach.</small>
+          </label>
+          <button className="danger-button" type="submit">
+            Remove hot lead
+          </button>
+        </form>
+      </ConfirmDialog>
     </article>
   );
 }

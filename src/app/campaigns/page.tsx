@@ -1,6 +1,8 @@
 import { CampaignReviewSeverity, CampaignStatus } from "@prisma/client";
-import { AlertTriangle, CheckCircle2, Plus, Send } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Globe2, Plus, Send, Trash2 } from "lucide-react";
 import Link from "next/link";
+import { deleteCampaign } from "@/app/actions";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
 import { objectiveLabels } from "@/lib/campaigns";
@@ -22,14 +24,8 @@ export default async function CampaignsPage() {
       take: 100
     }),
     prisma.campaign.count(),
-    prisma.campaign.count({
-      where: { status: CampaignStatus.REVIEW_BLOCKED }
-    }),
-    prisma.campaign.count({
-      where: {
-        status: { in: [CampaignStatus.SCHEDULED, CampaignStatus.SENDING] }
-      }
-    }),
+    prisma.campaign.count({ where: { status: CampaignStatus.REVIEW_BLOCKED } }),
+    prisma.campaign.count({ where: { status: { in: [CampaignStatus.SCHEDULED, CampaignStatus.SENDING] } } }),
     prisma.campaign.count({ where: { status: CampaignStatus.COMPLETED } })
   ]);
 
@@ -47,8 +43,14 @@ export default async function CampaignsPage() {
             <Link className="secondary-button" href="/whatsapp/templates">
               WhatsApp Templates
             </Link>
+            <Link className="secondary-button" href="/campaigns/website-audits">
+              Website Audits
+            </Link>
             <Link className="secondary-button" href="/campaigns/new">
               Create Email
+            </Link>
+            <Link className="secondary-button" href="/campaigns/website-audits/new">
+              <Globe2 size={16} aria-hidden="true" /> New Website Audit
             </Link>
             <Link className="button" href="/whatsapp/campaigns/new">
               <Plus size={16} aria-hidden="true" /> Create WhatsApp
@@ -90,6 +92,7 @@ export default async function CampaignsPage() {
               <th>People</th>
               <th>Safety check</th>
               <th>Created</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -121,12 +124,31 @@ export default async function CampaignsPage() {
                       <SafetyIssues reviews={campaign.reviews} blockers={blockers} warnings={warnings} />
                     </td>
                     <td>{formatDate(campaign.createdAt)}</td>
+                    <td>
+                      <ConfirmDialog
+                        trigger={
+                          <button className="danger-button table-action-button" type="button">
+                            <Trash2 size={16} aria-hidden="true" /> Delete
+                          </button>
+                        }
+                        title="Delete this campaign?"
+                        description={`This removes "${campaign.name}" and its recipients, message records, reviews, and send jobs. Leads stay in the system.`}
+                      >
+                        <form action={deleteCampaign}>
+                          <input type="hidden" name="campaignId" value={campaign.id} />
+                          <input type="hidden" name="returnTo" value="/campaigns" />
+                          <button className="danger-button" type="submit">
+                            Delete campaign
+                          </button>
+                        </form>
+                      </ConfirmDialog>
+                    </td>
                   </tr>
                 );
               })
             ) : (
               <tr>
-                <td colSpan={7}>
+                <td colSpan={8}>
                   <div className="empty-state">
                     No campaigns yet. Create a campaign when your leads and message are ready.
                   </div>

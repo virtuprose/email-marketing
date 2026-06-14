@@ -1,7 +1,7 @@
 import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
 import { prisma } from "@/lib/prisma";
-import { ingestInboundReply } from "@/lib/replies";
+import { ingestInboundReply, isSystemOrMarketingReply } from "@/lib/replies";
 
 export function imapReplyInboxConfigured() {
   return Boolean(process.env.IMAP_HOST && process.env.IMAP_USER && process.env.IMAP_PASS);
@@ -153,7 +153,7 @@ function looksLikeReply(
   return /^(re|fw|fwd)\s*:/i.test((subject || "").trim());
 }
 
-function replySkipReason({
+export function replySkipReason({
   fromEmail,
   subject,
   bodyText,
@@ -169,12 +169,16 @@ function replySkipReason({
   const normalizedFrom = fromEmail.trim().toLowerCase();
   const inboxUser = process.env.IMAP_USER?.trim().toLowerCase();
   if (inboxUser && normalizedFrom === inboxUser) return "self_sent_message";
+  const inboxDomain = inboxUser?.split("@")[1];
+  if (inboxDomain && normalizedFrom.endsWith(`@${inboxDomain}`)) return "internal_domain_message";
 
   const localPart = normalizedFrom.split("@")[0] || "";
   if (
-    ["mailer-daemon", "postmaster"].includes(localPart) ||
+    ["mailer-daemon", "postmaster", "bounce", "notification", "notifications"].includes(localPart) ||
     localPart === "no-reply" ||
-    localPart === "noreply"
+    localPart === "noreply" ||
+    localPart.startsWith("no-reply+") ||
+    localPart.startsWith("noreply+")
   ) {
     return "automated_sender";
   }
@@ -193,7 +197,34 @@ function replySkipReason({
     .toLowerCase();
   if (autoSubmitted && autoSubmitted !== "no") return "auto_submitted_message";
 
+  const precedence = String(headers.get("precedence") || "")
+    .trim()
+    .toLowerCase();
+  if (["bulk", "junk", "list"].includes(precedence)) return "bulk_or_list_message";
+
+  if (hasAnyHeader(headers, ["list-unsubscribe", "list-id", "feedback-id", "x-campaign-id"])) {
+    return "bulk_or_list_message";
+  }
+
+  const xMailer = String(headers.get("x-mailer") || "").toLowerCase();
+  if (matchesAny(xMailer, ["mailchimp", "sendgrid", "customer.io", "mailjet", "hubspot", "marketo"])) {
+    return "bulk_or_list_message";
+  }
+
+  const normalizedBody = bodyText.replace(/\s+/g, " ").trim().toLowerCase();
+  if (isSystemOrMarketingReply({ fromEmail, subject: normalizedSubject, bodyText: normalizedBody })) {
+    return "system_or_marketing_message";
+  }
+
   return null;
+}
+
+function hasAnyHeader(headers: Map<string, unknown>, names: string[]) {
+  return names.some((name) => Boolean(headers.get(name)));
+}
+
+function matchesAny(value: string, needles: string[]) {
+  return needles.some((needle) => value.includes(needle));
 }
 
 function firstAddress(value: unknown): string | undefined {

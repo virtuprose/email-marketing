@@ -182,12 +182,15 @@ export function buildSalesConversationSignals({
     100,
     Math.round(scoreFit * 0.3 + scoreEngagement * 0.25 + normalizedIntent * 0.45)
   );
+  const isNonSales = intent === ReplyIntent.NON_SALES;
 
   return {
     language,
     stage,
     status:
-      intent === ReplyIntent.UNSUBSCRIBE || intent === ReplyIntent.COMPLAINT
+      isNonSales
+        ? ConversationStatus.CLOSED
+        : intent === ReplyIntent.UNSUBSCRIBE || intent === ReplyIntent.COMPLAINT
         ? ConversationStatus.SUPPRESSED
         : ownerHandoffForStage(stage, intent, totalScore)
           ? ConversationStatus.OWNER_HANDOFF
@@ -445,6 +448,7 @@ function stageFromIntent({
   contactDetails: ContactDetails;
   preferredMeetingTime: string | null | undefined;
 }) {
+  if (intent === ReplyIntent.NON_SALES) return SalesLeadStage.NOT_A_LEAD;
   if (intent === ReplyIntent.NOT_INTERESTED) return SalesLeadStage.NOT_INTERESTED;
   if (intent === ReplyIntent.UNSUBSCRIBE || intent === ReplyIntent.COMPLAINT)
     return SalesLeadStage.NOT_INTERESTED;

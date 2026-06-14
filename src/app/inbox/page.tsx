@@ -19,19 +19,23 @@ import {
   RotateCcw,
   Send,
   Sparkles,
+  Trash2,
   UserCheck
 } from "lucide-react";
 import Link from "next/link";
 import {
   bookMeetingSlotForReply,
   closeInboundReply,
+  cleanSystemReplies,
   createManualInboundReply,
+  deleteInboundReply,
   markInboundReplyHot,
   pauseAiForLeadAction,
   reprocessInboundReply,
   resumeAiForLeadAction,
   sendAiReplyDraftAction
 } from "@/app/actions";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
 import { formatDate, formatNumber } from "@/lib/format";
@@ -52,6 +56,7 @@ type InboxPageProps = {
     selected?: string;
     intent?: string;
     status?: string;
+    showIgnored?: string;
   }>;
 };
 
@@ -71,13 +76,17 @@ type ReplyDetail = Prisma.InboundReplyGetPayload<{ include: typeof replyInclude 
 export default async function InboxPage({ searchParams }: InboxPageProps) {
   const params = await searchParams;
   const where: Prisma.InboundReplyWhereInput = {};
+  const showIgnored = params.showIgnored === "1" || params.intent === ReplyIntent.NON_SALES;
 
   if (params.intent && params.intent in ReplyIntent) {
     where.intent = params.intent as ReplyIntent;
+  } else if (!showIgnored) {
+    where.intent = { not: ReplyIntent.NON_SALES };
   }
   if (params.status && params.status in ReplyStatus) {
     where.status = params.status as ReplyStatus;
   }
+  where.OR = [{ leadId: null }, { lead: { deletedAt: null } }];
 
   const [replies, selectedReply, counts, sendingAccounts, availableSlots] = await Promise.all([
     prisma.inboundReply.findMany({
@@ -113,9 +122,16 @@ export default async function InboxPage({ searchParams }: InboxPageProps) {
         title="Reply command center"
         description="See every captured reply, what AI understood, and the next action to move the lead forward."
         actions={
-          <Link className="secondary-button" href="/pipeline">
-            <UserCheck size={16} aria-hidden="true" /> View Hot Leads
-          </Link>
+          <div className="toolbar" style={{ margin: 0 }}>
+            <form action={cleanSystemReplies}>
+              <button className="secondary-button" type="submit">
+                <Trash2 size={16} aria-hidden="true" /> Clean vendor/system replies
+              </button>
+            </form>
+            <Link className="secondary-button" href="/pipeline">
+              <UserCheck size={16} aria-hidden="true" /> View Hot Leads
+            </Link>
+          </div>
         }
       />
 
@@ -158,7 +174,7 @@ export default async function InboxPage({ searchParams }: InboxPageProps) {
                   selected={activeReply?.id === reply.id}
                   href={`/inbox?selected=${reply.id}${params.intent ? `&intent=${params.intent}` : ""}${
                     params.status ? `&status=${params.status}` : ""
-                  }`}
+                  }${showIgnored ? "&showIgnored=1" : ""}`}
                 />
               ))
             ) : (
@@ -181,34 +197,58 @@ function ReplyQueueItem({ reply, href, selected }: { reply: ReplyDetail; href: s
   const draft = reply.drafts[0];
   const action = replyActionLabel(reply, draft);
   return (
-    <Link
-      className={`reply-list-item reply-work-item${selected ? " reply-list-item-active" : ""}`}
-      href={href}
-      aria-current={selected ? "page" : undefined}
-    >
-      <span className="reply-channel-icon" aria-hidden="true">
-        {reply.channel === MessageChannel.WHATSAPP ? <MessageCircle size={17} /> : <Mail size={17} />}
-      </span>
-      <span className="reply-list-main">
-        <strong>{replyLeadName(reply)}</strong>
-        <span>{replyPreview(reply)}</span>
-        <span className="reply-contact-line">{replyContact(reply)}</span>
-      </span>
-      <span className="reply-list-meta">
-        <StatusBadge label={replyIntentLabels[reply.intent]} status={reply.intent} />
-        <span>{action}</span>
-        <span>{formatDate(reply.receivedAt)}</span>
-      </span>
-    </Link>
+    <article className={`reply-list-item reply-work-item${selected ? " reply-list-item-active" : ""}`}>
+      <Link className="reply-list-select" href={href} aria-current={selected ? "page" : undefined}>
+        <span className="reply-channel-icon" aria-hidden="true">
+          {reply.channel === MessageChannel.WHATSAPP ? <MessageCircle size={17} /> : <Mail size={17} />}
+        </span>
+        <span className="reply-list-main">
+          <strong>{replyLeadName(reply)}</strong>
+          <span>{replyPreview(reply)}</span>
+          <span className="reply-contact-line">{replyContact(reply)}</span>
+        </span>
+        <span className="reply-list-meta">
+          <StatusBadge label={replyIntentLabels[reply.intent]} status={reply.intent} />
+          <span>{action}</span>
+          <span>{formatDate(reply.receivedAt)}</span>
+        </span>
+      </Link>
+      <ConfirmDialog
+        trigger={
+          <button className="icon-danger-button" type="button" aria-label={`Delete reply from ${replyLeadName(reply)}`}>
+            <Trash2 size={16} aria-hidden="true" />
+          </button>
+        }
+        title="Delete this reply?"
+        description="Remove the captured reply and its AI drafts. You can also remove the linked contact from future outreach."
+      >
+        <form action={deleteInboundReply} className="stack">
+          <input type="hidden" name="replyId" value={reply.id} />
+          <input type="hidden" name="returnTo" value="/inbox" />
+          <label className="field checkbox-field">
+            <input name="deleteLinkedLead" type="checkbox" />
+            <span>Also remove linked contact/email from Leads</span>
+            <small>This soft-deletes the lead and blocks future email or WhatsApp outreach.</small>
+          </label>
+          <button className="danger-button" type="submit">
+            Delete reply
+          </button>
+        </form>
+      </ConfirmDialog>
+    </article>
   );
 }
 
 async function getInboxCounts() {
+  const activeReplyWhere: Prisma.InboundReplyWhereInput = {
+    intent: { not: ReplyIntent.NON_SALES },
+    OR: [{ leadId: null }, { lead: { deletedAt: null } }]
+  };
   const [total, hot, draftReady, ownerReview] = await Promise.all([
-    prisma.inboundReply.count(),
-    prisma.inboundReply.count({ where: { status: ReplyStatus.HOT_HANDOFF } }),
-    prisma.inboundReply.count({ where: { status: ReplyStatus.DRAFT_READY } }),
-    prisma.inboundReply.count({ where: { ownerActionRequired: true } })
+    prisma.inboundReply.count({ where: activeReplyWhere }),
+    prisma.inboundReply.count({ where: { ...activeReplyWhere, status: ReplyStatus.HOT_HANDOFF } }),
+    prisma.inboundReply.count({ where: { ...activeReplyWhere, status: ReplyStatus.DRAFT_READY } }),
+    prisma.inboundReply.count({ where: { ...activeReplyWhere, ownerActionRequired: true } })
   ]);
 
   return { total, hot, draftReady, ownerReview };
@@ -263,7 +303,11 @@ function ManualReplyPanel() {
   );
 }
 
-function FilterPanel({ params }: { params: { intent?: string; status?: string } }) {
+function FilterPanel({
+  params
+}: {
+  params: { intent?: string; status?: string; showIgnored?: string };
+}) {
   return (
     <section className="panel">
       <div className="panel-header">
@@ -295,6 +339,11 @@ function FilterPanel({ params }: { params: { intent?: string; status?: string } 
                 </option>
               ))}
             </select>
+          </label>
+          <label className="field checkbox-field">
+            <input name="showIgnored" type="checkbox" value="1" defaultChecked={params.showIgnored === "1"} />
+            <span>Show ignored/system replies</span>
+            <small>Default view hides vendor emails, newsletters, and system messages.</small>
           </label>
           <button className="secondary-button" type="submit">
             Show replies
@@ -368,7 +417,7 @@ function ReplyDetailPanel({
             value={salesStageLabel(reply.salesStage ?? reply.lead?.salesStage)}
           />
           <MiniMetric label="Tone" value={replySentimentLabels[reply.sentiment]} status={reply.sentiment} />
-          <MiniMetric label="AI confidence" value={confidenceLabel(reply.aiConfidence)} />
+          <MiniMetric label="AI confidence" value={confidenceLabel(reply.aiConfidence, reply.intent)} />
         </div>
 
         <div className="reply-section">
@@ -491,6 +540,28 @@ function ReplyDetailPanel({
                 I handled this
               </button>
             </form>
+            <ConfirmDialog
+              trigger={
+                <button className="danger-button" type="button">
+                  <Trash2 size={16} aria-hidden="true" /> Delete reply
+                </button>
+              }
+              title="Delete this reply?"
+              description="This removes the captured reply, its AI drafts, and its saved conversation messages. You can also remove the linked contact from future outreach."
+            >
+              <form action={deleteInboundReply} className="stack">
+                <input type="hidden" name="replyId" value={reply.id} />
+                <input type="hidden" name="returnTo" value="/inbox" />
+                <label className="field checkbox-field">
+                  <input name="deleteLinkedLead" type="checkbox" />
+                  <span>Also remove linked contact/email from Leads</span>
+                  <small>This soft-deletes the lead and blocks future email or WhatsApp outreach.</small>
+                </label>
+                <button className="danger-button" type="submit">
+                  Delete reply
+                </button>
+              </form>
+            </ConfirmDialog>
           </div>
         </div>
       </div>
@@ -604,7 +675,8 @@ function MiniMetric({ label, value, status }: { label: string; value: string; st
   );
 }
 
-function confidenceLabel(score: number) {
+function confidenceLabel(score: number, intent?: ReplyIntent) {
+  if (intent === ReplyIntent.NON_SALES && score === 100) return "Rule match (100%)";
   if (score >= 80) return `High confidence (${score}%)`;
   if (score >= 55) return `Needs review (${score}%)`;
   return `Do not auto-send (${score}%)`;
@@ -617,6 +689,7 @@ function salesStageLabel(stage: string | null | undefined) {
     QUALIFIED_LEAD: "Qualified lead",
     MEETING_REQUESTED: "Meeting requested",
     MEETING_BOOKED: "Meeting booked",
+    NOT_A_LEAD: "Not a lead",
     NOT_INTERESTED: "Not interested",
     FOLLOW_UP_REQUIRED: "Follow-up required"
   };
@@ -670,6 +743,7 @@ function replyPreview(reply: ReplyDetail) {
 }
 
 function replyActionLabel(reply: ReplyDetail, draft?: ReplyDetail["drafts"][number]) {
+  if (reply.intent === ReplyIntent.NON_SALES) return "Ignored";
   if (reply.ownerActionRequired) return "Needs your review";
   if (reply.status === ReplyStatus.AUTO_REPLIED || draft?.status === AiReplyDraftStatus.SENT)
     return "AI replied";

@@ -28,20 +28,25 @@ const variableOptions = [
 
 export default async function NewWhatsappCampaignPage({ searchParams }: PageProps) {
   const params = await searchParams;
-  const [defaultOffer, templates, leadCounts, eligibleCount] = await Promise.all([
+  const [defaultOffer, templates, leadCounts, eligibleCount, leadGroups] = await Promise.all([
     prisma.offer.findFirst({ where: { active: true }, orderBy: { createdAt: "asc" } }),
     prisma.whatsappTemplate.findMany({
       where: { active: true, status: WhatsappTemplateStatus.APPROVED },
       orderBy: { name: "asc" }
     }),
-    prisma.lead.groupBy({ by: ["status"], _count: { status: true } }),
+    prisma.lead.groupBy({ by: ["status"], where: { deletedAt: null }, _count: { status: true } }),
     prisma.lead.count({
       where: {
+        deletedAt: null,
         phoneE164: { not: null },
         whatsappOptIn: true,
         whatsappStatus: "OPTED_IN",
         whatsappStoppedAt: null
       }
+    }),
+    prisma.leadGroup.findMany({
+      include: { _count: { select: { members: true } } },
+      orderBy: { name: "asc" }
     })
   ]);
   const selectedTemplate =
@@ -142,6 +147,19 @@ export default async function NewWhatsappCampaignPage({ searchParams }: PageProp
                     <input className="input" name="country" placeholder="Kuwait, UAE, United States" />
                   </label>
                 </div>
+
+                <label className="field">
+                  <span>Audience group</span>
+                  <select className="select" name="groupId" defaultValue="">
+                    <option value="">No group filter</option>
+                    {leadGroups.map((group) => (
+                      <option key={group.id} value={group.id}>
+                        {group.name} ({formatNumber(group._count.members)})
+                      </option>
+                    ))}
+                  </select>
+                  <small>Choose a named lead group to limit this WhatsApp campaign to that audience.</small>
+                </label>
 
                 <div className="form-grid">
                   <label className="field">
